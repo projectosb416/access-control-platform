@@ -32,7 +32,7 @@ jobs:
           node-version: 24
           cache: npm
       - run: npm ci
-      - run: npm install --no-save @opennextjs/cloudflare@1.20.6 wrangler@4.134.0 esbuild@0.25.4
+      - run: npm install --no-save --legacy-peer-deps @opennextjs/cloudflare@1.20.6 wrangler@4.134.0 esbuild@0.25.4
       - run: npm run build:worker
 
   deploy-pin-hash-test:
