@@ -66,58 +66,75 @@ function json(body: unknown, status = 200): Response {
   })
 }
 
+async function handle(request: Request): Promise<Response> {
+  const url = new URL(request.url)
+
+  if (url.pathname === '/') {
+    return json({
+      service: 'pin-hash-test',
+      iterations: ITERATIONS,
+      saltBytes: SALT_BYTES,
+      derivedKeyBytes: DERIVED_KEY_BYTES,
+      endpoints: ['/hash?pin=<digits>', '/verify?pin=<digits>&salt=<b64>&hash=<b64>'],
+    })
+  }
+
+  if (url.pathname === '/hash') {
+    const pin = url.searchParams.get('pin')
+    if (!pin) return json({ error: 'missing pin' }, 400)
+
+    const salt = crypto.getRandomValues(new Uint8Array(SALT_BYTES))
+    const start = Date.now()
+    const derived = await pbkdf2(pin, salt)
+    const ms = Date.now() - start
+
+    return json({
+      salt: toBase64(salt),
+      hash: toBase64(derived),
+      iterations: ITERATIONS,
+      ms,
+    })
+  }
+
+  if (url.pathname === '/verify') {
+    const pin = url.searchParams.get('pin')
+    const saltB64 = url.searchParams.get('salt')
+    const hashB64 = url.searchParams.get('hash')
+    if (!pin || !saltB64 || !hashB64) {
+      return json({ error: 'missing pin, salt, or hash' }, 400)
+    }
+
+    const salt = fromBase64(saltB64)
+    const expected = fromBase64(hashB64)
+    const start = Date.now()
+    const derived = await pbkdf2(pin, salt)
+    const ms = Date.now() - start
+
+    return json({
+      match: constantTimeEqual(derived, expected),
+      iterations: ITERATIONS,
+      ms,
+    })
+  }
+
+  return json({ error: 'not found' }, 404)
+}
+
 export default {
   async fetch(request: Request): Promise<Response> {
-    const url = new URL(request.url)
-
-    if (url.pathname === '/') {
-      return json({
-        service: 'pin-hash-test',
-        iterations: ITERATIONS,
-        saltBytes: SALT_BYTES,
-        derivedKeyBytes: DERIVED_KEY_BYTES,
-        endpoints: ['/hash?pin=<digits>', '/verify?pin=<digits>&salt=<b64>&hash=<b64>'],
-      })
+    try {
+      return await handle(request)
+    } catch (err) {
+      const e = err as Error
+      return json(
+        {
+          error: 'uncaught exception',
+          name: e?.name ?? 'Unknown',
+          message: e?.message ?? String(err),
+          stack: e?.stack ?? null,
+        },
+        500,
+      )
     }
-
-    if (url.pathname === '/hash') {
-      const pin = url.searchParams.get('pin')
-      if (!pin) return json({ error: 'missing pin' }, 400)
-
-      const salt = crypto.getRandomValues(new Uint8Array(SALT_BYTES))
-      const start = Date.now()
-      const derived = await pbkdf2(pin, salt)
-      const ms = Date.now() - start
-
-      return json({
-        salt: toBase64(salt),
-        hash: toBase64(derived),
-        iterations: ITERATIONS,
-        ms,
-      })
-    }
-
-    if (url.pathname === '/verify') {
-      const pin = url.searchParams.get('pin')
-      const saltB64 = url.searchParams.get('salt')
-      const hashB64 = url.searchParams.get('hash')
-      if (!pin || !saltB64 || !hashB64) {
-        return json({ error: 'missing pin, salt, or hash' }, 400)
-      }
-
-      const salt = fromBase64(saltB64)
-      const expected = fromBase64(hashB64)
-      const start = Date.now()
-      const derived = await pbkdf2(pin, salt)
-      const ms = Date.now() - start
-
-      return json({
-        match: constantTimeEqual(derived, expected),
-        iterations: ITERATIONS,
-        ms,
-      })
-    }
-
-    return json({ error: 'not found' }, 404)
   },
 }
