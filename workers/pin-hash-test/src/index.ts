@@ -8,14 +8,27 @@
  * Cloudflare changes Web Crypto behavior in a way that breaks PBKDF2, CI
  * catches it here before it hits production credential code.
  *
+ * Secured: all action endpoints require `Authorization: Bearer <TEST_AUTH_TOKEN>`.
+ * The root endpoint is public (service metadata only).
+ *
+ * Pepper: a 32-byte secret stored as the Worker secret PIN_PEPPER is
+ * concatenated with the PIN before PBKDF2 input. Losing the pepper makes
+ * every stored hash unrecoverable — that is intentional and by design.
+ *
  * Endpoints:
- *   GET /hash?pin=<digits>                         -> { salt, hash, iterations, ms }
- *   GET /verify?pin=<digits>&salt=<b64>&hash=<b64> -> { match, iterations, ms }
+ *   GET /                                              -> service metadata (public)
+ *   GET /hash?pin=<digits>                             -> { salt, hash, iterations, ms }
+ *   GET /verify?pin=<digits>&salt=<b64>&hash=<b64>     -> { match, iterations, ms }
  */
 
 const ITERATIONS = 100_000
 const SALT_BYTES = 16
 const DERIVED_KEY_BYTES = 32
+
+interface Env {
+  TEST_AUTH_TOKEN: string
+  PIN_PEPPER: string
+}
 
 function toBase64(bytes: Uint8Array): string {
   let binary = ''
@@ -30,11 +43,13 @@ function fromBase64(b64: string): Uint8Array {
   return bytes
 }
 
-async function pbkdf2(pin: string, salt: Uint8Array): Promise<Uint8Array> {
+async function pbkdf2(pin: string, salt: Uint8Array, pepper: string): Promise<Uint8Array> {
   const encoder = new TextEncoder()
+  // pepper || pin — pepper mixed in before PBKDF2 key derivation
+  const combined = encoder.encode(pepper + pin)
   const keyMaterial = await crypto.subtle.importKey(
     'raw',
-    encoder.encode(pin),
+    combined,
     { name: 'PBKDF2' },
     false,
     ['deriveBits'],
@@ -66,7 +81,23 @@ function json(body: unknown, status = 200): Response {
   })
 }
 
-async function handle(request: Request): Promise<Response> {
+function isAuthorized(request: Request, env: Env): boolean {
+  const expected = env.TEST_AUTH_TOKEN
+  if (!expected) return false
+  const header = request.headers.get('authorization') ?? ''
+  const prefix = 'Bearer '
+  if (!header.startsWith(prefix)) return false
+  const provided = header.slice(prefix.length)
+  // Constant-time comparison of equal-length tokens
+  if (provided.length !== expected.length) return false
+  let diff = 0
+  for (let i = 0; i < provided.length; i++) {
+    diff |= provided.charCodeAt(i) ^ expected.charCodeAt(i)
+  }
+  return diff === 0
+}
+
+async function handle(request: Request, env: Env): Promise<Response> {
   const url = new URL(request.url)
 
   if (url.pathname === '/') {
@@ -75,8 +106,17 @@ async function handle(request: Request): Promise<Response> {
       iterations: ITERATIONS,
       saltBytes: SALT_BYTES,
       derivedKeyBytes: DERIVED_KEY_BYTES,
+      pepperEnabled: Boolean(env.PIN_PEPPER),
       endpoints: ['/hash?pin=<digits>', '/verify?pin=<digits>&salt=<b64>&hash=<b64>'],
     })
+  }
+
+  if (!env.PIN_PEPPER) {
+    return json({ error: 'server misconfigured: PIN_PEPPER missing' }, 500)
+  }
+
+  if (!isAuthorized(request, env)) {
+    return json({ error: 'unauthorized' }, 401)
   }
 
   if (url.pathname === '/hash') {
@@ -85,7 +125,7 @@ async function handle(request: Request): Promise<Response> {
 
     const salt = crypto.getRandomValues(new Uint8Array(SALT_BYTES))
     const start = Date.now()
-    const derived = await pbkdf2(pin, salt)
+    const derived = await pbkdf2(pin, salt, env.PIN_PEPPER)
     const ms = Date.now() - start
 
     return json({
@@ -107,7 +147,7 @@ async function handle(request: Request): Promise<Response> {
     const salt = fromBase64(saltB64)
     const expected = fromBase64(hashB64)
     const start = Date.now()
-    const derived = await pbkdf2(pin, salt)
+    const derived = await pbkdf2(pin, salt, env.PIN_PEPPER)
     const ms = Date.now() - start
 
     return json({
@@ -121,9 +161,9 @@ async function handle(request: Request): Promise<Response> {
 }
 
 export default {
-  async fetch(request: Request): Promise<Response> {
+  async fetch(request: Request, env: Env): Promise<Response> {
     try {
-      return await handle(request)
+      return await handle(request, env)
     } catch (err) {
       const e = err as Error
       return json(
