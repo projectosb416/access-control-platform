@@ -13,7 +13,7 @@
  *   GET /verify?pin=<digits>&salt=<b64>&hash=<b64> -> { match, iterations, ms }
  */
 
-const ITERATIONS = 600_000
+const ITERATIONS = 100_000
 const SALT_BYTES = 16
 const DERIVED_KEY_BYTES = 32
 
