@@ -21,6 +21,9 @@ jobs:
       - run: npm run typecheck
       - run: npm run test:run
       - run: npm run build
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
 
   verify-worker:
     name: Verify Worker build (OpenNext)
@@ -34,6 +37,9 @@ jobs:
       - run: npm ci
       - run: npm install --no-save --legacy-peer-deps @opennextjs/cloudflare@1.20.6 wrangler@4.134.0 esbuild@0.25.4
       - run: npm run build:worker
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
 
   apply-migrations:
     name: Apply Supabase migrations
@@ -101,6 +107,16 @@ jobs:
         run: npm install --no-save --legacy-peer-deps @opennextjs/cloudflare@1.20.6 wrangler@4.134.0 esbuild@0.25.4
       - name: Build Worker
         run: npm run build:worker
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+      - name: Set worker secrets
+        run: |
+          echo "${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}" | npx wrangler secret put SUPABASE_SERVICE_ROLE_KEY
+          echo "${{ secrets.PIN_PEPPER }}" | npx wrangler secret put PIN_PEPPER
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
       - name: Deploy to Cloudflare
         run: npx wrangler deploy
         env:
