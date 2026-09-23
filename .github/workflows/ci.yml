@@ -80,8 +80,8 @@ jobs:
         run: npm install --no-save wrangler@4.134.0
       - name: Set worker secrets
         run: |
-          echo "${{ secrets.PIN_PEPPER }}" | npx wrangler secret put PIN_PEPPER --config workers/pin-hash-test/wrangler.jsonc
-          echo "${{ secrets.TEST_AUTH_TOKEN }}" | npx wrangler secret put TEST_AUTH_TOKEN --config workers/pin-hash-test/wrangler.jsonc
+          printf '%s' "${{ secrets.PIN_PEPPER }}" | npx wrangler secret put PIN_PEPPER --config workers/pin-hash-test/wrangler.jsonc
+          printf '%s' "${{ secrets.TEST_AUTH_TOKEN }}" | npx wrangler secret put TEST_AUTH_TOKEN --config workers/pin-hash-test/wrangler.jsonc
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
@@ -113,7 +113,7 @@ jobs:
       - name: Set worker secrets
         run: |
           echo "${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}" | npx wrangler secret put SUPABASE_SERVICE_ROLE_KEY
-          echo "${{ secrets.PIN_PEPPER }}" | npx wrangler secret put PIN_PEPPER
+          printf '%s' "${{ secrets.PIN_PEPPER }}" | npx wrangler secret put PIN_PEPPER
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
