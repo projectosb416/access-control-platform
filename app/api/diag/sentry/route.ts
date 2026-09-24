@@ -1,8 +1,7 @@
-// Temporary diagnostic — throws a deliberate error so we can confirm Sentry
-// captures it in the deployed Worker. Deleted once verified.
+import { withSentryRoute } from '@/lib/sentry/route-wrapper'
 
 export const runtime = 'nodejs'
 
-export async function GET() {
+export const GET = withSentryRoute(async () => {
   throw new Error('Sentinel test error — Phase 8.5 Sentry verification')
-}
+})
