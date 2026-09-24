@@ -138,6 +138,7 @@ jobs:
         run: |
           printf '%s' "${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}" | npx wrangler secret put SUPABASE_SERVICE_ROLE_KEY
           printf '%s' "${{ secrets.PIN_PEPPER }}" | npx wrangler secret put PIN_PEPPER
+          printf '%s' "${{ secrets.SENTRY_DSN }}" | npx wrangler secret put SENTRY_DSN
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
