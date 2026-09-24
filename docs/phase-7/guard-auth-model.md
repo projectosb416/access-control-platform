@@ -72,13 +72,20 @@ HttpOnly cookie, set by the Worker on successful shift start:
 | HttpOnly | true | Prevents JS from reading it (XSS defense) |
 | Secure | true | HTTPS only |
 | SameSite | Strict | CSRF defense |
-| Path | `/guard` | Only sent to guard routes |
+| Path | `/api` | Covers /api/guard-session/* and /api/guard/* |
 | Max-Age | 86400 (24h) | Upper bound; the shift check is the real limit |
 
 **In the database (new column on `shift_sessions`):**
 
 - `session_token_hash text` — SHA-256 of the raw token, hex-encoded
 - `session_token_issued_at timestamptz`
+
+**Why SHA-256 and not PBKDF2:** the raw token is 32 bytes from
+`crypto.getRandomValues` — 256 bits of entropy. Unlike a 6-digit PIN
+(1,000,000 combinations), there is nothing to brute-force here. PBKDF2
+exists to slow brute force of low-entropy inputs; with no low-entropy
+input, it adds cost without defense. SHA-256 is the correct choice, and
+any reviewer should not "fix" it to PBKDF2.
 
 **Not stored:** the raw token, anywhere.
 
