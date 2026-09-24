@@ -25,10 +25,9 @@ const PIN_LENGTH = 6
 const PIN_REGEX = /^[0-9]{6}$/
 const MAX_IDEMPOTENCY_KEY_LENGTH = 200
 
-// Rate limit policy per scope (see docs/phase-7/guard-auth-model.md §5)
-const GATE_LIMIT    = { window: 60, max: 50, lockout: 60 }
-const GUARD_LIMIT   = { window: 60, max: 30, lockout: 60 }
-const CRED_LIMIT    = { window: 60, max: 10, lockout: 300 }
+// Rate-limit thresholds are resolved server-side from the org's plan
+// entitlements. The Worker calls rate_limit_attempt_for_org and Postgres
+// applies the correct window / max / lockout per scope. See migration 0037.
 
 type Sound = 'success' | 'error' | 'warning'
 type Visual = 'green' | 'red' | 'amber'
@@ -130,12 +129,10 @@ export async function POST(request: NextRequest) {
   // -------------------------------------------------------------------------
   // 4. Rate limits — gate, then guard (both known from session context)
   // -------------------------------------------------------------------------
-  const { data: gateLimit } = await supabase.rpc('rate_limit_attempt', {
+  const { data: gateLimit } = await supabase.rpc('rate_limit_attempt_for_org', {
+    p_organization_id: organizationId,
     p_scope_type: 'gate',
     p_scope_id: gateId,
-    p_window_seconds: GATE_LIMIT.window,
-    p_max_attempts: GATE_LIMIT.max,
-    p_lockout_seconds: GATE_LIMIT.lockout,
     p_bucket_seconds: 10,
   })
 
@@ -145,12 +142,10 @@ export async function POST(request: NextRequest) {
     )
   }
 
-  const { data: guardLimit } = await supabase.rpc('rate_limit_attempt', {
+  const { data: guardLimit } = await supabase.rpc('rate_limit_attempt_for_org', {
+    p_organization_id: organizationId,
     p_scope_type: 'guard',
     p_scope_id: guardProfileId,
-    p_window_seconds: GUARD_LIMIT.window,
-    p_max_attempts: GUARD_LIMIT.max,
-    p_lockout_seconds: GUARD_LIMIT.lockout,
     p_bucket_seconds: 10,
   })
 
@@ -205,12 +200,10 @@ export async function POST(request: NextRequest) {
   // -------------------------------------------------------------------------
   // 6. Credential-scope rate limit (only now that we have the credential id)
   // -------------------------------------------------------------------------
-  const { data: credLimit } = await supabase.rpc('rate_limit_attempt', {
+  const { data: credLimit } = await supabase.rpc('rate_limit_attempt_for_org', {
+    p_organization_id: organizationId,
     p_scope_type: 'credential',
     p_scope_id: credential.id,
-    p_window_seconds: CRED_LIMIT.window,
-    p_max_attempts: CRED_LIMIT.max,
-    p_lockout_seconds: CRED_LIMIT.lockout,
     p_bucket_seconds: 10,
   })
 
