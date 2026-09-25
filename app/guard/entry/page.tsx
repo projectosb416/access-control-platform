@@ -1,8 +1,10 @@
 'use client'
 
 import { useState, useEffect, useCallback, type ReactNode } from 'react'
+import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { playTierSound } from '@/lib/guard/sound'
+import { nextEntryKey } from '@/lib/guard/idempotency'
 
 type ResultCode =
   | 'GRANTED'
@@ -109,51 +111,109 @@ interface ApiResult {
 }
 
 const PIN_LENGTH = 6
+const SESSION_STORAGE_KEY = 'guard_shift_session_id'
 
 // ---------------------------------------------------------------------------
-// LOCAL STUB — replaced in piece 8 by a real fetch to /api/guard/entry.
-// PIN mapping lets us exercise every tier in the browser:
-//   123456 → GRANTED
-//   000000 → EXPIRED_AUTHORIZATION
-//   111111 → RATE_LIMITED
-//   999999 → DENIED
-//   anything else → INVALID_PIN
+// Real API call. Errors are normalised into result codes so the caller
+// has a single shape to handle.
+//
+//   200 → result_code from body
+//   401 → session expired; caller redirects to /guard
+//   5xx / network → SYSTEM_UNAVAILABLE result
 // ---------------------------------------------------------------------------
-async function stubSubmit(pin: string): Promise<ApiResult> {
-  await new Promise((r) => setTimeout(r, 400))
-  switch (pin) {
-    case '123456':
-      return { result_code: 'GRANTED', reason: null }
-    case '000000':
-      return {
-        result_code: 'EXPIRED_AUTHORIZATION',
-        reason: 'Valid until 3:00 PM',
-      }
-    case '111111':
-      return { result_code: 'RATE_LIMITED', reason: 'Try again in 45s' }
-    case '999999':
-      return { result_code: 'DENIED', reason: 'No reason provided' }
-    default:
-      return { result_code: 'INVALID_PIN', reason: 'PIN does not match' }
+
+interface ApiResponse {
+  result_code: ResultCode
+  reason: string | null
+}
+
+class SessionExpiredError extends Error {
+  constructor() {
+    super('SESSION_EXPIRED')
+    this.name = 'SessionExpiredError'
+  }
+}
+
+async function callEntryApi(pin: string): Promise<ApiResponse> {
+  const sessionId =
+    typeof window !== 'undefined'
+      ? window.sessionStorage.getItem(SESSION_STORAGE_KEY)
+      : null
+
+  const body: { pin: string; idempotency_key?: string } = { pin }
+  if (sessionId) {
+    body.idempotency_key = nextEntryKey(sessionId, 'entry')
+  }
+
+  let res: Response
+  try {
+    res = await fetch('/api/guard/entry', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    })
+  } catch {
+    // Network failure — treat as system unavailable, guard can retry.
+    return { result_code: 'SYSTEM_UNAVAILABLE', reason: null }
+  }
+
+  if (res.status === 401) {
+    throw new SessionExpiredError()
+  }
+
+  if (!res.ok) {
+    // 400 or 5xx — we don't want to leak raw codes. Surface as system error.
+    return { result_code: 'SYSTEM_UNAVAILABLE', reason: null }
+  }
+
+  const data = (await res.json().catch(() => null)) as
+    | { result_code?: string; reason?: string | null }
+    | null
+
+  if (!data || typeof data.result_code !== 'string') {
+    return { result_code: 'SYSTEM_UNAVAILABLE', reason: null }
+  }
+
+  // The server always returns a known result_code. If we somehow receive
+  // one we don't recognise, fall back to DENIED.
+  const code = (data.result_code in PRESENTATION
+    ? data.result_code
+    : 'DENIED') as ResultCode
+
+  return {
+    result_code: code,
+    reason: typeof data.reason === 'string' ? data.reason : null,
   }
 }
 
 // ---------------------------------------------------------------------------
 
 export default function GuardEntryPage() {
+  const router = useRouter()
   const [pin, setPin] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [result, setResult] = useState<ApiResult | null>(null)
 
-  const submitPin = useCallback(async (value: string) => {
-    setSubmitting(true)
-    try {
-      const res = await stubSubmit(value)
-      setResult(res)
-    } finally {
-      setSubmitting(false)
-    }
-  }, [])
+  const submitPin = useCallback(
+    async (value: string) => {
+      setSubmitting(true)
+      try {
+        const res = await callEntryApi(value)
+        setResult(res)
+      } catch (err) {
+        if (err instanceof SessionExpiredError) {
+          // Shift session no longer valid. Send the guard back to login.
+          // The login page clears stale session state on mount.
+          router.replace('/guard')
+          return
+        }
+        setResult({ result_code: 'SYSTEM_UNAVAILABLE', reason: null })
+      } finally {
+        setSubmitting(false)
+      }
+    },
+    [router],
+  )
 
   function pressDigit(d: string) {
     if (submitting || result) return
