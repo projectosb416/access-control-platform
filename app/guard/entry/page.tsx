@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, type ReactNode } from 'react'
 import { Button } from '@/components/ui/button'
+import { playTierSound } from '@/lib/guard/sound'
 
 type ResultCode =
   | 'GRANTED'
@@ -180,6 +181,13 @@ export default function GuardEntryPage() {
     setPin('')
     setResult(null)
   }
+
+  // Play the tier sound when a result appears. Audio failures never
+  // affect the visual result — see lib/guard/sound.ts.
+  useEffect(() => {
+    if (!result) return
+    playTierSound(PRESENTATION[result.result_code].tier)
+  }, [result])
 
   // Auto-dismiss GRANTED after 3 seconds. All other results require
   // a tap on "Try again".
