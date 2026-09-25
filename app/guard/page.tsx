@@ -1,12 +1,13 @@
 'use client'
 
-import { useState, useSyncExternalStore, type FormEvent } from 'react'
+import { useState, useEffect, useSyncExternalStore, type FormEvent } from 'react'
 import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 
 const ORG_STORAGE_KEY = 'guard_org_id'
+const SESSION_STORAGE_KEY = 'guard_shift_session_id'
 
 // Error codes → guard-facing copy. Source of truth for codes:
 // docs/phase-7/error-http-mapping.md. Any unmapped code falls through to
@@ -61,6 +62,12 @@ export default function GuardLoginPage() {
   // change it during this session.
   const showOrgField = changeRequested || savedOrgId === null
 
+  // A fresh login page visit clears any stale session id. A new shift
+  // starts a new session; the old id would produce wrong idempotency keys.
+  useEffect(() => {
+    window.sessionStorage.removeItem(SESSION_STORAGE_KEY)
+  }, [])
+
   function changeEstate() {
     window.localStorage.removeItem(ORG_STORAGE_KEY)
     setChangeRequested(true)
@@ -93,7 +100,10 @@ export default function GuardLoginPage() {
         }),
       })
 
-      const data = (await res.json().catch(() => ({}))) as { code?: string }
+      const data = (await res.json().catch(() => ({}))) as {
+        code?: string
+        shift_session_id?: string
+      }
 
       if (!res.ok) {
         setError(
@@ -105,6 +115,14 @@ export default function GuardLoginPage() {
 
       // Persist the estate so future visits skip this field.
       window.localStorage.setItem(ORG_STORAGE_KEY, org)
+
+      // Persist the shift session id. Used by the ENTRY screen to build
+      // idempotency keys. sessionStorage — survives reloads within this
+      // tab, dies when the tab closes. See lib/guard/idempotency.ts.
+      if (data.shift_session_id) {
+        window.sessionStorage.setItem(SESSION_STORAGE_KEY, data.shift_session_id)
+      }
+
       router.push('/guard/entry')
     } catch {
       setError('Network error. Check your connection and try again.')
