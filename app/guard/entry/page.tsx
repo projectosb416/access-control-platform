@@ -3,6 +3,16 @@
 import { useState, useEffect, useCallback, type ReactNode } from 'react'
 import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
 import { playTierSound } from '@/lib/guard/sound'
 import { nextEntryKey } from '@/lib/guard/idempotency'
 
@@ -122,11 +132,6 @@ const SESSION_STORAGE_KEY = 'guard_shift_session_id'
 //   5xx / network → SYSTEM_UNAVAILABLE result
 // ---------------------------------------------------------------------------
 
-interface ApiResponse {
-  result_code: ResultCode
-  reason: string | null
-}
-
 class SessionExpiredError extends Error {
   constructor() {
     super('SESSION_EXPIRED')
@@ -134,7 +139,7 @@ class SessionExpiredError extends Error {
   }
 }
 
-async function callEntryApi(pin: string): Promise<ApiResponse> {
+async function callEntryApi(pin: string): Promise<ApiResult> {
   const sessionId =
     typeof window !== 'undefined'
       ? window.sessionStorage.getItem(SESSION_STORAGE_KEY)
@@ -153,7 +158,6 @@ async function callEntryApi(pin: string): Promise<ApiResponse> {
       body: JSON.stringify(body),
     })
   } catch {
-    // Network failure — treat as system unavailable, guard can retry.
     return { result_code: 'SYSTEM_UNAVAILABLE', reason: null }
   }
 
@@ -162,7 +166,6 @@ async function callEntryApi(pin: string): Promise<ApiResponse> {
   }
 
   if (!res.ok) {
-    // 400 or 5xx — we don't want to leak raw codes. Surface as system error.
     return { result_code: 'SYSTEM_UNAVAILABLE', reason: null }
   }
 
@@ -174,8 +177,6 @@ async function callEntryApi(pin: string): Promise<ApiResponse> {
     return { result_code: 'SYSTEM_UNAVAILABLE', reason: null }
   }
 
-  // The server always returns a known result_code. If we somehow receive
-  // one we don't recognise, fall back to DENIED.
   const code = (data.result_code in PRESENTATION
     ? data.result_code
     : 'DENIED') as ResultCode
@@ -193,6 +194,7 @@ export default function GuardEntryPage() {
   const [pin, setPin] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [result, setResult] = useState<ApiResult | null>(null)
+  const [endShiftOpen, setEndShiftOpen] = useState(false)
 
   const submitPin = useCallback(
     async (value: string) => {
@@ -202,8 +204,6 @@ export default function GuardEntryPage() {
         setResult(res)
       } catch (err) {
         if (err instanceof SessionExpiredError) {
-          // Shift session no longer valid. Send the guard back to login.
-          // The login page clears stale session state on mount.
           router.replace('/guard')
           return
         }
@@ -215,6 +215,18 @@ export default function GuardEntryPage() {
     [router],
   )
 
+  const handleEndShift = useCallback(async () => {
+    // Best-effort end. Never block the guard on a failing call — always
+    // clear local state and return to login.
+    try {
+      await fetch('/api/guard-session/end', { method: 'POST' })
+    } catch {
+      // ignore
+    }
+    window.sessionStorage.removeItem(SESSION_STORAGE_KEY)
+    router.replace('/guard')
+  }, [router])
+
   function pressDigit(d: string) {
     if (submitting || result) return
     if (pin.length >= PIN_LENGTH) return
@@ -222,7 +234,6 @@ export default function GuardEntryPage() {
     const next = pin + d
     setPin(next)
 
-    // Auto-submit when the sixth digit lands.
     if (next.length === PIN_LENGTH) {
       void submitPin(next)
     }
@@ -242,15 +253,13 @@ export default function GuardEntryPage() {
     setResult(null)
   }
 
-  // Play the tier sound when a result appears. Audio failures never
-  // affect the visual result — see lib/guard/sound.ts.
+  // Play the tier sound when a result appears.
   useEffect(() => {
     if (!result) return
     playTierSound(PRESENTATION[result.result_code].tier)
   }, [result])
 
-  // Auto-dismiss GRANTED after 3 seconds. All other results require
-  // a tap on "Try again".
+  // Auto-dismiss GRANTED after 3 seconds.
   useEffect(() => {
     if (result?.result_code !== 'GRANTED') return
     const t = setTimeout(() => {
@@ -293,10 +302,17 @@ export default function GuardEntryPage() {
   // ----- Input state -----
   return (
     <main className="flex flex-1 flex-col px-4 pt-6 pb-4">
-      <header className="mb-4 text-center">
+      <header className="relative mb-4 flex items-center justify-center">
         <p className="text-muted-foreground text-xs tracking-wide uppercase">
           Enter visitor PIN
         </p>
+        <button
+          type="button"
+          onClick={() => setEndShiftOpen(true)}
+          className="text-muted-foreground absolute top-0 right-0 text-xs underline underline-offset-4"
+        >
+          End Shift
+        </button>
       </header>
 
       <PinDots pin={pin} />
@@ -309,6 +325,23 @@ export default function GuardEntryPage() {
           disabled={submitting}
         />
       </div>
+
+      <AlertDialog open={endShiftOpen} onOpenChange={setEndShiftOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>End your shift?</AlertDialogTitle>
+            <AlertDialogDescription>
+              You&apos;ll need your shift code and guard ID to log back in.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={handleEndShift}>
+              End Shift
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </main>
   )
 }
