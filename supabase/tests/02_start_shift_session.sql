@@ -12,7 +12,7 @@ begin;
 
 set search_path = public, extensions;
 
-select plan(9);
+select plan(10);
 
 -- ============================================================================
 -- Fixtures
@@ -193,6 +193,32 @@ select throws_ok(
   'P0001',
   'SHIFT_NOT_FOUND',
   'unknown shift code raises SHIFT_NOT_FOUND'
+);
+
+-- ============================================================================
+-- Assertion 10: re-auth flips a scheduled shift to active (migration 0038)
+-- ============================================================================
+-- Simulates the scenario the Phase 9 browser test exposed: a guard has an
+-- active session on a shift, but the shift row is still 'scheduled'. The
+-- re-auth path must flip the shift back to 'active', otherwise
+-- resolve_shift_session rejects every subsequent request with 401.
+
+update public.shifts
+   set status = 'scheduled'
+ where id = 'b2000000-0000-0000-0000-000000000060';
+
+select public.start_shift_session(
+  'b2000000-0000-0000-0000-000000000010',
+  'SH-SHIFT1', 'GU-SHIFT1',
+  '7777777777777777777777777777777777777777777777777777777777777777',
+  30
+);
+
+select is(
+  (select status from public.shifts
+    where id = 'b2000000-0000-0000-0000-000000000060'),
+  'active',
+  're-auth flips a scheduled shift to active (migration 0038)'
 );
 
 select * from finish();
