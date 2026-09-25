@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, type FormEvent } from 'react'
+import { useState, useSyncExternalStore, type FormEvent } from 'react'
 import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -25,30 +25,45 @@ const ERROR_MESSAGES: Record<string, string> = {
   SYSTEM_UNAVAILABLE: 'Something went wrong. Please try again.',
 }
 
+// External-store bindings for the saved estate ID. useSyncExternalStore is
+// the React-19-correct way to read from localStorage without a setState
+// inside useEffect (which causes an extra render and trips the lint rule).
+function subscribeToStorage(onChange: () => void) {
+  window.addEventListener('storage', onChange)
+  return () => window.removeEventListener('storage', onChange)
+}
+
+function getOrgSnapshot(): string | null {
+  return window.localStorage.getItem(ORG_STORAGE_KEY)
+}
+
+function getOrgServerSnapshot(): string | null {
+  return null
+}
+
 export default function GuardLoginPage() {
   const router = useRouter()
 
-  const [savedOrgId, setSavedOrgId] = useState<string | null>(null)
-  const [showOrgField, setShowOrgField] = useState(true)
+  const savedOrgId = useSyncExternalStore(
+    subscribeToStorage,
+    getOrgSnapshot,
+    getOrgServerSnapshot,
+  )
+
+  const [changeRequested, setChangeRequested] = useState(false)
   const [orgId, setOrgId] = useState('')
   const [shiftCode, setShiftCode] = useState('')
   const [guardCode, setGuardCode] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  // On mount, if this device has been used before, load the estate ID.
-  useEffect(() => {
-    const stored = window.localStorage.getItem(ORG_STORAGE_KEY)
-    if (stored) {
-      setSavedOrgId(stored)
-      setShowOrgField(false)
-    }
-  }, [])
+  // Show the estate field if there is no saved value, or the user asked to
+  // change it during this session.
+  const showOrgField = changeRequested || savedOrgId === null
 
   function changeEstate() {
     window.localStorage.removeItem(ORG_STORAGE_KEY)
-    setSavedOrgId(null)
-    setShowOrgField(true)
+    setChangeRequested(true)
     setOrgId('')
     setError(null)
   }
@@ -57,7 +72,7 @@ export default function GuardLoginPage() {
     e.preventDefault()
     setError(null)
 
-    const org = (savedOrgId ?? orgId).trim()
+    const org = (changeRequested || savedOrgId === null ? orgId : savedOrgId).trim()
     const shift = shiftCode.trim().toUpperCase()
     const guard = guardCode.trim().toUpperCase()
 
