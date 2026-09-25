@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from 'next/server'
 import { createServiceClient } from '@/lib/supabase/service'
+import { withSentryRoute } from '@/lib/sentry/route-wrapper'
 
 /**
  * POST /api/guard-session/start
@@ -36,7 +37,7 @@ async function sha256Hex(input: string): Promise<string> {
     .join('')
 }
 
-export async function POST(request: NextRequest) {
+async function postHandler(request: NextRequest) {
   // -------------------------------------------------------------------------
   // 1. Parse body
   // -------------------------------------------------------------------------
@@ -162,3 +163,6 @@ function statusForCode(code: string): number {
       return 500
   }
 }
+
+
+export const POST = withSentryRoute(postHandler)

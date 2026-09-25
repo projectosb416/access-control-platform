@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from 'next/server'
 import { createServiceClient } from '@/lib/supabase/service'
 import { computeLookupKey, verifyPinAgainstPhc } from '@/lib/pin/pin'
+import { withSentryRoute } from '@/lib/sentry/route-wrapper'
 
 /**
  * POST /api/guard/entry
@@ -60,7 +61,7 @@ function jsonError(code: string, status: number) {
   return NextResponse.json({ code }, { status })
 }
 
-export async function POST(request: NextRequest) {
+async function postHandler(request: NextRequest) {
   // -------------------------------------------------------------------------
   // 1. Session context from middleware
   // -------------------------------------------------------------------------
@@ -327,3 +328,6 @@ async function logAppEvent(
   if (error || !data) return null
   return data as string
 }
+
+
+export const POST = withSentryRoute(postHandler)
