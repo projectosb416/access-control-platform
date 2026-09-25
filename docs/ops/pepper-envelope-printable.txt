@@ -1,0 +1,130 @@
+================================================================================
+                  ACCESS CONTROL PLATFORM - EMERGENCY PEPPER BACKUP
+================================================================================
+
+This envelope contains the recovery credential for the Access Control Platform.
+OPEN ONLY IN AN EMERGENCY. See instructions below.
+
+--------------------------------------------------------------------------------
+                            ENVELOPE LABEL
+        (Cut this box out and stick it on the outside of the envelope)
+--------------------------------------------------------------------------------
+
+  +--------------------------------------------------------------------------+
+  |                                                                          |
+  |                    OPEN ONLY IN AN EMERGENCY                             |
+  |                                                                          |
+  |              Read the enclosed procedure BEFORE opening.                 |
+  |                                                                          |
+  |              Contact if unclear: ______________________________          |
+  |                                                                          |
+  |              Do not discard. This is a backup, not a duplicate.          |
+  |                                                                          |
+  +--------------------------------------------------------------------------+
+
+
+================================================================================
+                            ENVELOPE CONTENTS
+================================================================================
+
+--------------------------------------------------------------------------------
+PART 1 - THE PEPPER VALUE
+--------------------------------------------------------------------------------
+
+The value below is the PIN pepper for the Access Control Platform. It is a
+64-character hexadecimal string (digits 0-9 and letters a-f only). Without
+this value, no PIN can be verified on the platform.
+
+Value (fill in by hand, in block capitals, clearly):
+
+    ________________________________________________________
+    ________________________________________________________
+    ________________________________________________________
+    ________________________________________________________
+
+
+Written by:      ______________________________________
+
+Date written:    ______________________________________
+
+
+--------------------------------------------------------------------------------
+PART 2 - RECOVERY PROCEDURE
+--------------------------------------------------------------------------------
+
+AUDIENCE
+  Whoever opens this envelope in an emergency. No technical background
+  assumed. Read this entire page before doing anything.
+
+WHAT THE PEPPER IS
+  A 64-character string written on the card above. It protects every PIN
+  on the platform. It is used by the software to check whether a visitor's
+  PIN is correct.
+
+WHEN TO USE THIS
+  Open this envelope ONLY IF:
+    - The primary operator (name on the envelope) has been unreachable for
+      more than 7 days AND the platform is failing to process PINs
+    - The platform is being transferred to a new operator
+    - You are instructed by the primary operator to do so
+
+  Do NOT open this envelope if:
+    - The primary operator is simply away for a few days
+    - The platform is working normally
+    - You are curious what is inside
+
+HOW TO RECOVER
+  1. Fill in the Backup Contact name and phone number on the next section
+     of this document, if not already filled in.
+  2. Contact the Backup Contact. Explain that you have opened this envelope
+     and why.
+  3. The Backup Contact will either instruct you on what to do next, or
+     will take over from here.
+
+WHAT TO DO WITH THE PEPPER
+  Do not send the pepper value by SMS, email, WhatsApp, or any messaging
+  app. Do not read it aloud over a phone call. Do not photograph it.
+
+  If you must transmit it, use a method the Backup Contact specifies
+  directly. Otherwise, hand the physical card to them in person.
+
+
+--------------------------------------------------------------------------------
+PART 3 - BACKUP CONTACT
+--------------------------------------------------------------------------------
+
+Fill in by hand, in block capitals:
+
+Backup Contact Name:
+
+    ______________________________________
+
+Backup Contact Phone:
+
+    ______________________________________
+
+Backup Contact Email (optional):
+
+    ______________________________________
+
+
+--------------------------------------------------------------------------------
+PART 4 - WHAT NOT TO DO
+--------------------------------------------------------------------------------
+
+Do not:
+  - Share the pepper with anyone except the Backup Contact
+  - Post it online, anywhere, in any form
+  - Type it into any app, website, or service without instruction
+  - Discard this envelope even after use
+  - Assume it is unimportant because it looks like a random string
+
+If this envelope is lost, stolen, or suspected of being opened by someone
+unauthorized, tell the primary operator or Backup Contact immediately.
+The pepper will need to be rotated (replaced with a new one), which is a
+significant operation.
+
+
+================================================================================
+                            END OF DOCUMENT
+================================================================================
