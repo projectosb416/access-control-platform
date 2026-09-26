@@ -1,27 +1,28 @@
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { ActivityClient } from './activity-client'
+import { STALE_SESSION_HOURS } from '@/lib/admin/sessions'
 
 /**
  * /admin/activity — sessions and raw events for the admin's org.
  *
- * Two views in one page:
- *   Sessions — who came in, who's inside, who left. The daily question.
- *   Events   — every attempt, including failures. The security view.
+ * Two views:
+ *   Sessions — Today / Attention / All
+ *   Events   — All / Failures only
  *
- * Both queries are scoped by RLS to the admin's org. FK names are explicit
- * because access_sessions has two FKs to gates (entered and exited) and
- * Supabase needs disambiguation.
+ * "Attention" surfaces sessions that need admin action: open more than
+ * STALE_SESSION_HOURS, or already marked unresolved. This is the surface
+ * that closes known-issue #1 (unresolved sessions currently requiring
+ * manual SQL).
+ *
+ * FK names in joins are explicit — access_sessions has two FKs to gates
+ * (entered and exited), so Supabase needs disambiguation.
  */
 
 const DAYS_WINDOW = 7
-const SESSIONS_LIMIT = 100
+const SESSIONS_LIMIT = 200
 const EVENTS_LIMIT = 300
 
-// Locally-typed shapes for joined results. Supabase's string-select parser
-// does not infer nested FK shapes when names are qualified. We cast the
-// result through `unknown` to these shapes — the query string is the
-// source of truth, this is a typing gap only.
 interface SessionQueryRow {
   id: string
   status: string
@@ -50,7 +51,42 @@ function unwrap<T>(v: T | T[] | null | undefined): T | null {
   return Array.isArray(v) ? (v[0] ?? null) : v
 }
 
-export default async function ActivityPage() {
+const SESSION_SELECT = [
+  'id',
+  'status',
+  'entered_at',
+  'exited_at',
+  'resolved_at',
+  'resolution_reason',
+  'person:people!access_sessions_person_id_fkey(full_name)',
+  'gate_entered:gates!access_sessions_gate_entered_id_fkey(name)',
+  'gate_exited:gates!access_sessions_gate_exited_id_fkey(name)',
+].join(', ')
+
+const EVENT_SELECT = [
+  'id',
+  'direction',
+  'result_code',
+  'reason',
+  'recorded_at',
+  'person:people!access_events_person_id_fkey(full_name)',
+  'gate:gates!access_events_gate_id_fkey(name)',
+  'guard_profile:guard_profiles!access_events_guard_profile_id_fkey(guard_code)',
+].join(', ')
+
+export default async function ActivityPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ filter?: string }>
+}) {
+  const params = await searchParams
+  const initialFilter: SessionFilter =
+    params.filter === 'attention'
+      ? 'attention'
+      : params.filter === 'all'
+        ? 'all'
+        : 'today'
+
   const supabase = await createClient()
 
   const {
@@ -75,57 +111,56 @@ export default async function ActivityPage() {
   const organizationId = membership.organization_id as string
 
   // Server Components are per-request. Date.now() here is not a re-render
-  // hazard — the React 19 purity rule fires because the same rule catches
-  // Client Components. Justified disable.
+  // hazard. Justified disable of the React 19 purity rule.
   // eslint-disable-next-line react-hooks/purity
-  const since = new Date(Date.now() - DAYS_WINDOW * 24 * 60 * 60 * 1000).toISOString()
+  const nowMs = Date.now()
+  const since = new Date(nowMs - DAYS_WINDOW * 24 * 60 * 60 * 1000).toISOString()
+  const staleThresholdMs = nowMs - STALE_SESSION_HOURS * 60 * 60 * 1000
+  const staleThresholdIso = new Date(staleThresholdMs).toISOString()
 
+  // Query 1: everything in the window (7 days back).
   const { data: sessionRaw } = await supabase
     .from('access_sessions')
-    .select(
-      [
-        'id',
-        'status',
-        'entered_at',
-        'exited_at',
-        'resolved_at',
-        'resolution_reason',
-        'person:people!access_sessions_person_id_fkey(full_name)',
-        'gate_entered:gates!access_sessions_gate_entered_id_fkey(name)',
-        'gate_exited:gates!access_sessions_gate_exited_id_fkey(name)',
-      ].join(', '),
-    )
+    .select(SESSION_SELECT)
     .eq('organization_id', organizationId)
     .gte('entered_at', since)
     .order('entered_at', { ascending: false })
     .limit(SESSIONS_LIMIT)
 
+  // Query 2: stale-open sessions outside the window. If a visitor entered
+  // 10 days ago and never exited, we still need to surface it.
+  const { data: staleRaw } = await supabase
+    .from('access_sessions')
+    .select(SESSION_SELECT)
+    .eq('organization_id', organizationId)
+    .eq('status', 'open')
+    .lt('entered_at', staleThresholdIso)
+    .order('entered_at', { ascending: true })
+    .limit(SESSIONS_LIMIT)
+
   const { data: eventRaw } = await supabase
     .from('access_events')
-    .select(
-      [
-        'id',
-        'direction',
-        'result_code',
-        'reason',
-        'recorded_at',
-        'person:people!access_events_person_id_fkey(full_name)',
-        'gate:gates!access_events_gate_id_fkey(name)',
-        'guard_profile:guard_profiles!access_events_guard_profile_id_fkey(guard_code)',
-      ].join(', '),
-    )
+    .select(EVENT_SELECT)
     .eq('organization_id', organizationId)
     .gte('recorded_at', since)
     .order('recorded_at', { ascending: false })
     .limit(EVENTS_LIMIT)
 
-  const sessionRows = (sessionRaw ?? []) as unknown as SessionQueryRow[]
-  const eventRows = (eventRaw ?? []) as unknown as EventQueryRow[]
+  const mergedRows = new Map<string, SessionQueryRow>()
+  for (const r of (sessionRaw ?? []) as unknown as SessionQueryRow[]) {
+    mergedRows.set(r.id, r)
+  }
+  for (const r of (staleRaw ?? []) as unknown as SessionQueryRow[]) {
+    if (!mergedRows.has(r.id)) mergedRows.set(r.id, r)
+  }
 
-  const sessions: SessionRow[] = sessionRows.map((s) => {
+  const sessions: SessionRow[] = Array.from(mergedRows.values()).map((s) => {
     const person = unwrap(s.person)
     const gIn = unwrap(s.gate_entered)
     const gOut = unwrap(s.gate_exited)
+    const enteredMs = new Date(s.entered_at).getTime()
+    const isStale = s.status === 'open' && enteredMs < staleThresholdMs
+
     return {
       id: s.id,
       status: s.status,
@@ -136,10 +171,16 @@ export default async function ActivityPage() {
       person_name: person?.full_name ?? 'Unknown',
       gate_entered_name: gIn?.name ?? '—',
       gate_exited_name: gOut?.name ?? null,
+      is_stale: isStale,
     }
   })
 
-  const events: EventRow[] = eventRows.map((e) => {
+  // Sort merged by entered_at desc for display
+  sessions.sort(
+    (a, b) => new Date(b.entered_at).getTime() - new Date(a.entered_at).getTime(),
+  )
+
+  const events: EventRow[] = ((eventRaw ?? []) as unknown as EventQueryRow[]).map((e) => {
     const person = unwrap(e.person)
     const gate = unwrap(e.gate)
     const guard = unwrap(e.guard_profile)
@@ -157,12 +198,16 @@ export default async function ActivityPage() {
 
   return (
     <ActivityClient
+      organizationId={organizationId}
       windowDays={DAYS_WINDOW}
+      initialFilter={initialFilter}
       initialSessions={sessions}
       initialEvents={events}
     />
   )
 }
+
+export type SessionFilter = 'today' | 'attention' | 'all'
 
 export interface SessionRow {
   id: string
@@ -174,6 +219,7 @@ export interface SessionRow {
   person_name: string
   gate_entered_name: string
   gate_exited_name: string | null
+  is_stale: boolean
 }
 
 export interface EventRow {

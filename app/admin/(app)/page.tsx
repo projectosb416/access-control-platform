@@ -1,18 +1,15 @@
+import Link from 'next/link'
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { LogoutButton } from './logout-button'
+import { STALE_SESSION_HOURS } from '@/lib/admin/sessions'
 
 /**
  * /admin — state-aware landing page for the admin.
  *
- * Routes the admin to where they need to be based on onboarding state:
- *   - No auth session          → /admin/login
- *   - No active membership     → /admin/setup
- *   - Membership, provisioning → dashboard + "choose plan" prompt
- *   - Membership, active       → dashboard + "Command Center coming soon"
- *
- * As items 3+ are built, this page gains the plan-selection flow and
- * eventually the real Command Center.
+ * Routes the admin based on onboarding state, and surfaces an attention
+ * block when stale sessions exist. The block is the discoverable entry
+ * point for known-issue #1 (unresolved sessions requiring manual SQL).
  */
 
 export default async function AdminHomePage() {
@@ -26,7 +23,6 @@ export default async function AdminHomePage() {
     redirect('/admin/login')
   }
 
-  // RLS scopes this to the caller's own memberships.
   const { data: membership } = await supabase
     .from('organization_memberships')
     .select('organization_id, role')
@@ -35,7 +31,6 @@ export default async function AdminHomePage() {
     .maybeSingle()
 
   if (!membership) {
-    // Signed in but no org yet. Send to the setup wizard.
     redirect('/admin/setup')
   }
 
@@ -45,8 +40,20 @@ export default async function AdminHomePage() {
     .eq('id', membership.organization_id)
     .single()
 
+  // Stale-open count — sessions entered > STALE hours ago with no exit.
+  // eslint-disable-next-line react-hooks/purity
+  const staleThresholdIso = new Date(Date.now() - STALE_SESSION_HOURS * 60 * 60 * 1000).toISOString()
+
+  const { count: staleCount } = await supabase
+    .from('access_sessions')
+    .select('id', { count: 'exact', head: true })
+    .eq('organization_id', membership.organization_id)
+    .eq('status', 'open')
+    .lt('entered_at', staleThresholdIso)
+
   const orgName = org?.display_name ?? 'Your organization'
   const orgStatus = org?.status ?? 'unknown'
+  const showAttention = (staleCount ?? 0) > 0
 
   let nextStepTitle: string
   let nextStepBody: string
@@ -55,20 +62,18 @@ export default async function AdminHomePage() {
     nextStepBody =
       'Your organization is created. Select a subscription plan to unlock gate operations.'
   } else if (orgStatus === 'active') {
-    nextStepTitle = 'Command Center coming soon'
-    nextStepBody =
-      'Your organization is active. The dashboard is under construction.'
+    nextStepTitle = 'Your organization is active'
+    nextStepBody = 'Set up gates, guards, and shifts to begin operations.'
   } else if (orgStatus === 'suspended') {
     nextStepTitle = 'Organization suspended'
-    nextStepBody =
-      'Your organization is suspended. Please contact support.'
+    nextStepBody = 'Your organization is suspended. Please contact support.'
   } else {
     nextStepTitle = 'Status: ' + orgStatus
     nextStepBody = 'Please contact support if this is unexpected.'
   }
 
   return (
-    <main className="mx-auto flex w-full max-w-2xl flex-1 flex-col px-6 py-10">
+    <div className="mx-auto flex w-full max-w-2xl flex-1 flex-col px-6 py-10">
       <header className="mb-8 flex items-start justify-between gap-4">
         <div className="min-w-0">
           <h1 className="truncate text-2xl font-semibold tracking-tight">
@@ -81,10 +86,28 @@ export default async function AdminHomePage() {
         <LogoutButton />
       </header>
 
+      {showAttention ? (
+        <section className="mb-4 rounded-lg border border-amber-500/30 bg-amber-500/10 p-5">
+          <h2 className="text-base font-medium text-amber-900 dark:text-amber-200">
+            {staleCount} session{staleCount === 1 ? '' : 's'} need attention
+          </h2>
+          <p className="mt-1 text-sm text-amber-900/80 dark:text-amber-200/80">
+            Visitors entered more than {STALE_SESSION_HOURS} hours ago and no
+            exit was recorded.
+          </p>
+          <Link
+            href="/admin/activity?filter=attention"
+            className="mt-3 inline-block text-sm font-medium text-amber-900 underline underline-offset-4 dark:text-amber-200"
+          >
+            Review →
+          </Link>
+        </section>
+      ) : null}
+
       <section className="bg-muted/40 rounded-lg border p-6">
         <h2 className="mb-2 text-base font-medium">{nextStepTitle}</h2>
         <p className="text-muted-foreground text-sm">{nextStepBody}</p>
       </section>
-    </main>
+    </div>
   )
 }
