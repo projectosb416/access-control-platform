@@ -318,3 +318,34 @@ built without the admin side.
 
 **Decision on record:** Journey 1 (Guard) is closed with this as an
 explicit deferral, not a forgotten piece.
+
+---
+
+## Issue 11 — /admin/setup allows creating a second organization
+
+**Severity:** Medium
+**Area:** Product / UX
+**Found:** 2026-09-26 during Admin-lite item 2 testing
+
+**Symptom:** `/admin/setup` checks only for an authenticated session, not
+for an existing organization membership. An admin who already has an
+organization can navigate to `/admin/setup` directly and successfully run
+`setup_organization()`, creating a second organization under the same
+account.
+
+**Why it matters:** not a security bug — RLS and the database function
+both behave correctly. It is a UX bug: a confused admin could accidentally
+create multiple orgs and be unsure which is theirs. Also clutters the
+`organizations` table with ghost entries.
+
+**Current workaround:** none. Requires discipline on the admin's part.
+
+**Permanent fix:** the `/admin/setup` Server Component adds a membership
+check before rendering the wizard. If the account already has an active
+membership, redirect to `/admin`. This mirrors what `/admin` already does
+for the no-membership case — closing the loop in both directions.
+
+**Target phase:** Admin-lite item 3 or a small cleanup commit.
+
+**Test to add when fixed:** Sign up → complete setup → navigate directly
+to `/admin/setup` → expect redirect to `/admin`, no second org created.
