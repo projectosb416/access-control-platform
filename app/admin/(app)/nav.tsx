@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { LayoutDashboard, DoorOpen } from 'lucide-react'
+import { LayoutDashboard, DoorOpen, ShieldCheck } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 
 /**
@@ -12,10 +12,8 @@ import type { LucideIcon } from 'lucide-react'
  *   Desktop (lg+): persistent left sidebar, 240px
  *   Mobile:        fixed bottom bar, safe-area aware
  *
- * Current items: Dashboard, Gates. The sidebar has room for a heading
- * and eventually a logout affordance. The bottom bar has room for five
- * items — we promote secondary items to a "More" menu when we exceed
- * that, per the device-class dialogue.
+ * Current items: Dashboard, Gates, Guards. Room for five in the bottom
+ * bar — promote to a "More" menu when we exceed that.
  */
 
 interface NavItem {
@@ -27,6 +25,7 @@ interface NavItem {
 const ITEMS: NavItem[] = [
   { href: '/admin', label: 'Dashboard', icon: LayoutDashboard },
   { href: '/admin/gates', label: 'Gates', icon: DoorOpen },
+  { href: '/admin/guards', label: 'Guards', icon: ShieldCheck },
 ]
 
 function isActive(pathname: string, href: string): boolean {
