@@ -2,18 +2,14 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { LayoutDashboard, DoorOpen, ShieldCheck, Clock } from 'lucide-react'
+import { LayoutDashboard, DoorOpen, ShieldCheck, Clock, Activity } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 
 /**
  * Admin navigation.
  *
- * Two chrome variants from one component:
- *   Desktop (lg+): persistent left sidebar, 240px
- *   Mobile:        fixed bottom bar, safe-area aware
- *
- * Current items: Dashboard, Gates, Guards, Shifts. Room for five in the
- * bottom bar — promote to a "More" menu when we exceed that.
+ * Five items — at the bottom-bar ceiling. When a sixth is added, promote
+ * one to a "More" menu or move Activity/Reports to a secondary tier.
  */
 
 interface NavItem {
@@ -27,6 +23,7 @@ const ITEMS: NavItem[] = [
   { href: '/admin/gates', label: 'Gates', icon: DoorOpen },
   { href: '/admin/guards', label: 'Guards', icon: ShieldCheck },
   { href: '/admin/shifts', label: 'Shifts', icon: Clock },
+  { href: '/admin/activity', label: 'Activity', icon: Activity },
 ]
 
 function isActive(pathname: string, href: string): boolean {
@@ -79,7 +76,7 @@ export function Nav() {
               key={item.href}
               href={item.href}
               aria-current={active ? 'page' : undefined}
-              className={`flex flex-1 flex-col items-center gap-1 py-2 text-xs font-medium transition-colors ${
+              className={`flex flex-1 flex-col items-center gap-1 py-2 text-[10px] font-medium transition-colors ${
                 active ? 'text-foreground' : 'text-muted-foreground'
               }`}
             >
