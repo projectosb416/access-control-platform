@@ -16,6 +16,8 @@ import {
 import { playTierSound } from '@/lib/guard/sound'
 import { nextEntryKey } from '@/lib/guard/idempotency'
 
+type Direction = 'entry' | 'exit'
+
 type ResultCode =
   | 'GRANTED'
   | 'DENIED'
@@ -40,7 +42,6 @@ interface ResultPresentation {
 }
 
 // Presentation rules — see docs/phase-8/operational-states.md.
-// Guard-facing label is distinct per result code. Tier is shared.
 const PRESENTATION: Record<ResultCode, ResultPresentation> = {
   GRANTED: {
     tier: 'positive',
@@ -70,7 +71,7 @@ const PRESENTATION: Record<ResultCode, ResultPresentation> = {
   DENIED: {
     tier: 'warning',
     label: 'DENIED',
-    subtext: (r) => r ?? 'Entry not permitted',
+    subtext: (r) => r ?? 'Not permitted',
   },
   INVALID_PIN: {
     tier: 'negative',
@@ -123,15 +124,6 @@ interface ApiResult {
 const PIN_LENGTH = 6
 const SESSION_STORAGE_KEY = 'guard_shift_session_id'
 
-// ---------------------------------------------------------------------------
-// Real API call. Errors are normalised into result codes so the caller
-// has a single shape to handle.
-//
-//   200 → result_code from body
-//   401 → session expired; caller redirects to /guard
-//   5xx / network → SYSTEM_UNAVAILABLE result
-// ---------------------------------------------------------------------------
-
 class SessionExpiredError extends Error {
   constructor() {
     super('SESSION_EXPIRED')
@@ -139,7 +131,10 @@ class SessionExpiredError extends Error {
   }
 }
 
-async function callEntryApi(pin: string): Promise<ApiResult> {
+async function callGuardApi(
+  pin: string,
+  direction: Direction,
+): Promise<ApiResult> {
   const sessionId =
     typeof window !== 'undefined'
       ? window.sessionStorage.getItem(SESSION_STORAGE_KEY)
@@ -147,12 +142,12 @@ async function callEntryApi(pin: string): Promise<ApiResult> {
 
   const body: { pin: string; idempotency_key?: string } = { pin }
   if (sessionId) {
-    body.idempotency_key = nextEntryKey(sessionId, 'entry')
+    body.idempotency_key = nextEntryKey(sessionId, direction)
   }
 
   let res: Response
   try {
-    res = await fetch('/api/guard/entry', {
+    res = await fetch(`/api/guard/${direction}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
@@ -194,13 +189,14 @@ export default function GuardEntryPage() {
   const [pin, setPin] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [result, setResult] = useState<ApiResult | null>(null)
+  const [mode, setMode] = useState<Direction>('entry')
   const [endShiftOpen, setEndShiftOpen] = useState(false)
 
   const submitPin = useCallback(
-    async (value: string) => {
+    async (value: string, direction: Direction) => {
       setSubmitting(true)
       try {
-        const res = await callEntryApi(value)
+        const res = await callGuardApi(value, direction)
         setResult(res)
       } catch (err) {
         if (err instanceof SessionExpiredError) {
@@ -216,12 +212,10 @@ export default function GuardEntryPage() {
   )
 
   const handleEndShift = useCallback(async () => {
-    // Best-effort end. Never block the guard on a failing call — always
-    // clear local state and return to login.
     try {
       await fetch('/api/guard-session/end', { method: 'POST' })
     } catch {
-      // ignore
+      // Best-effort. Never block the guard on a failing call.
     }
     window.sessionStorage.removeItem(SESSION_STORAGE_KEY)
     router.replace('/guard')
@@ -235,7 +229,7 @@ export default function GuardEntryPage() {
     setPin(next)
 
     if (next.length === PIN_LENGTH) {
-      void submitPin(next)
+      void submitPin(next, mode)
     }
   }
 
@@ -302,9 +296,9 @@ export default function GuardEntryPage() {
   // ----- Input state -----
   return (
     <main className="flex flex-1 flex-col px-4 pt-6 pb-4">
-      <header className="relative mb-4 flex items-center justify-center">
+      <header className="relative mb-3 flex items-center justify-center">
         <p className="text-muted-foreground text-xs tracking-wide uppercase">
-          Enter visitor PIN
+          {mode === 'entry' ? 'Visitor entry' : 'Visitor exit'}
         </p>
         <button
           type="button"
@@ -315,7 +309,11 @@ export default function GuardEntryPage() {
         </button>
       </header>
 
-      <PinDots pin={pin} />
+      <ModeToggle mode={mode} onChange={setMode} disabled={submitting} />
+
+      <div className="mt-6">
+        <PinDots pin={pin} />
+      </div>
 
       <div className="mt-auto">
         <Keypad
@@ -343,6 +341,46 @@ export default function GuardEntryPage() {
         </AlertDialogContent>
       </AlertDialog>
     </main>
+  )
+}
+
+// ---------------------------------------------------------------------------
+
+function ModeToggle({
+  mode,
+  onChange,
+  disabled,
+}: {
+  mode: Direction
+  onChange: (d: Direction) => void
+  disabled: boolean
+}) {
+  const base =
+    'flex-1 py-2 text-sm font-medium transition-colors select-none rounded-md'
+  const active = 'bg-foreground text-background'
+  const inactive = 'text-muted-foreground hover:text-foreground'
+
+  return (
+    <div className="bg-muted flex gap-1 rounded-lg p-1">
+      <button
+        type="button"
+        onClick={() => onChange('entry')}
+        disabled={disabled}
+        className={`${base} ${mode === 'entry' ? active : inactive}`}
+        aria-pressed={mode === 'entry'}
+      >
+        ENTRY
+      </button>
+      <button
+        type="button"
+        onClick={() => onChange('exit')}
+        disabled={disabled}
+        className={`${base} ${mode === 'exit' ? active : inactive}`}
+        aria-pressed={mode === 'exit'}
+      >
+        EXIT
+      </button>
+    </div>
   )
 }
 
