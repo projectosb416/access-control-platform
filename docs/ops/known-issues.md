@@ -203,3 +203,118 @@ Handheld. Low operational impact.
 4. Target phase must be a specific phase, not "later".
 
 If the workaround is "run SQL against production", severity is at least High.
+
+---
+
+## Issue 7 — Endpoint filter hid terminal-state credentials
+
+**Severity:** High
+**Area:** API correctness
+**Found:** 2026-09-26 during Guard ENTRY/EXIT browser testing
+**Fixed:** 2026-09-26 (commit — "fix(api): include terminal-state credentials in lookup")
+
+**Symptom:** Both `/api/guard/entry` and `/api/guard/exit` filtered the
+credential lookup to live statuses only (`.in('status', ['created','active',
+'in_use'])`). When a visitor's credential was `consumed` or `revoked`, the
+lookup returned zero rows and the guard saw `INVALID_PIN` — a wrong and
+misleading result code. The correct code (`ONE_TIME_ALREADY_CONSUMED`,
+`REVOKED_AUTHORIZATION`, `EXPIRED_AUTHORIZATION`) was being returned by
+the database function; the endpoint was hiding it before the function ran.
+
+**Why it matters:** the guard relays the label to the visitor, who relays
+it to their host. `INVALID PIN` says "check the PIN you sent." `ALREADY
+USED` says "that visit is complete." Different next steps. A guard
+sending the wrong signal wastes everyone's time.
+
+**Fix applied:** removed the `.in('status', ...)` filter from both
+endpoints and added `.order('created_at', { ascending: false })` so the
+newest credential wins when a live and terminal one share a lookup_key.
+
+**Class of bug to watch:** endpoint-level filtering around a
+SECURITY DEFINER function that already handles the same condition
+correctly. The database was right; the wrapping code was wrong. Any
+future endpoint that pre-filters before calling a decision function
+should be reviewed for the same pattern.
+
+---
+
+## Issue 8 — Fixture validity windows expire mid-testing
+
+**Severity:** Low
+**Area:** Testing infrastructure
+**Found:** 2026-09-26 during repeated ENTRY/EXIT testing
+
+**Symptom:** The e2e fixture's authorization is set to `valid_until =
+now() + 3 hours` at revival. Long testing sessions exceed that window
+and begin returning `EXPIRED_AUTHORIZATION`, blocking further test cycles
+until the fixture is refreshed.
+
+**Why it matters:** friction, not a bug. Real authorizations have
+admin-set windows of realistic durations; the fixture uses short windows
+by accident of when it was created.
+
+**Current workaround:** Run the fixture revival SQL again to extend the
+window.
+
+**Permanent fix:** Change the fixture revival SQL to set a 30-day
+validity window so multi-day testing sessions do not expire mid-test.
+
+**Target phase:** Next time the fixture SQL is touched.
+
+---
+
+## Issue 9 — Endpoint-level integration test coverage is thin
+
+**Severity:** Medium
+**Area:** Testing
+**Found:** 2026-09-26 as a consequence of Issue 7
+
+**Symptom:** Our 7 pgTAP test files cover the database functions
+thoroughly (~65 assertions). They do not cover the Worker endpoints
+that wrap those functions. Issue 7 was exactly this gap: the DB
+function was correct, the endpoint filtered out the data before
+calling it, and no test caught the mismatch.
+
+**Why it matters:** a class of bug exists at the seam between endpoint
+and database — the endpoint's input shaping, its filter choices, the
+order it calls things in. Unit tests on either side don't see it.
+
+**Current workaround:** Manual browser testing on each endpoint change.
+
+**Permanent fix:** Add integration tests that hit the deployed Worker
+with real requests and assert the response codes. Likely a Vitest suite
+running against a preview deployment, or a `test-e2e` CI job. Design
+belongs in Phase 10.
+
+**Target phase:** Phase 10 (Testing).
+
+---
+
+## Issue 10 — Guard device enrolment uses raw UUID input
+
+**Severity:** Low
+**Area:** Product / UX
+**Found:** 2026-09-26 during Journey 1 completion
+
+**Symptom:** The guard login screen asks for the estate UUID as free
+text. Real guards cannot be expected to type or remember a UUID. The
+correct flow is a short admin-generated code (e.g. `EST-2847`) that the
+guard enters once; the device stores the resolved org id from then on.
+
+**Why it matters:** the current input works for testing, not for
+onboarding a real guard. But it is not blocking anything else — the
+login screen has been proven to work when the code is known.
+
+**Current workaround:** guard device is pre-seeded with the estate UUID
+by whoever sets up the device.
+
+**Permanent fix:** Admin generates short-lived enrolment codes from
+the admin dashboard. Guard redeems on first visit. Design is already
+captured in `docs/phase-7/guard-auth-model.md`.
+
+**Target phase:** When the Admin journey is built. The enrolment flow
+is two-sided (admin generates, guard redeems) and cannot be properly
+built without the admin side.
+
+**Decision on record:** Journey 1 (Guard) is closed with this as an
+explicit deferral, not a forgotten piece.
