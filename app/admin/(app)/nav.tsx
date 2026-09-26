@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { LayoutDashboard, DoorOpen, ShieldCheck } from 'lucide-react'
+import { LayoutDashboard, DoorOpen, ShieldCheck, Clock } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 
 /**
@@ -12,8 +12,8 @@ import type { LucideIcon } from 'lucide-react'
  *   Desktop (lg+): persistent left sidebar, 240px
  *   Mobile:        fixed bottom bar, safe-area aware
  *
- * Current items: Dashboard, Gates, Guards. Room for five in the bottom
- * bar — promote to a "More" menu when we exceed that.
+ * Current items: Dashboard, Gates, Guards, Shifts. Room for five in the
+ * bottom bar — promote to a "More" menu when we exceed that.
  */
 
 interface NavItem {
@@ -26,6 +26,7 @@ const ITEMS: NavItem[] = [
   { href: '/admin', label: 'Dashboard', icon: LayoutDashboard },
   { href: '/admin/gates', label: 'Gates', icon: DoorOpen },
   { href: '/admin/guards', label: 'Guards', icon: ShieldCheck },
+  { href: '/admin/shifts', label: 'Shifts', icon: Clock },
 ]
 
 function isActive(pathname: string, href: string): boolean {
@@ -38,7 +39,6 @@ export function Nav() {
 
   return (
     <>
-      {/* Desktop sidebar */}
       <aside className="bg-muted/30 hidden shrink-0 border-r lg:flex lg:w-60 lg:flex-col">
         <div className="border-b px-5 py-4">
           <span className="text-sm font-semibold tracking-tight">
@@ -67,7 +67,6 @@ export function Nav() {
         </nav>
       </aside>
 
-      {/* Mobile bottom bar */}
       <nav
         className="bg-background fixed inset-x-0 bottom-0 z-50 flex border-t lg:hidden"
         style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
