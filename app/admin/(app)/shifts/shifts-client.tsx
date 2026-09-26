@@ -16,6 +16,7 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
 import { createClient } from '@/lib/supabase/client'
+import { CopyButton } from '@/components/copy-button'
 import type { ShiftRow } from './page'
 
 /**
@@ -252,9 +253,10 @@ export function ShiftsClient({
                 >
                   <div className="min-w-0">
                     <p className="truncate font-medium">{s.gate_name}</p>
-                    <p className="text-muted-foreground mt-0.5 truncate font-mono text-xs">
-                      {s.shift_code}
-                    </p>
+                    <div className="text-muted-foreground mt-0.5 flex items-center gap-2 text-xs">
+                      <span className="truncate font-mono">{s.shift_code}</span>
+                      <CopyButton value={s.shift_code} />
+                    </div>
                     <p className="text-muted-foreground mt-1 text-xs">
                       {formatRange(s.scheduled_start, s.scheduled_end)}
                     </p>
@@ -346,7 +348,8 @@ export function ShiftsClient({
                 Shift code:{' '}
                 <span className="bg-background rounded px-2 py-0.5 font-mono font-medium">
                   {justAdded.code}
-                </span>
+                </span>{' '}
+                <CopyButton value={justAdded.code} className="align-middle" />
               </p>
               <p className="text-muted-foreground mt-2 text-xs">
                 Share this with the guard who will work this shift.

@@ -16,6 +16,7 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
 import { createClient } from '@/lib/supabase/client'
+import { CopyButton } from '@/components/copy-button'
 import type { GuardRow } from './page'
 
 /**
@@ -238,9 +239,10 @@ export function GuardsClient({
                 >
                   <div className="min-w-0">
                     <p className="truncate font-medium">{g.full_name}</p>
-                    <p className="text-muted-foreground mt-0.5 truncate font-mono text-xs">
-                      {g.guard_code}
-                    </p>
+                    <div className="text-muted-foreground mt-0.5 flex items-center gap-2 text-xs">
+                      <span className="truncate font-mono">{g.guard_code}</span>
+                      <CopyButton value={g.guard_code} />
+                    </div>
                     {g.phone || g.email ? (
                       <p className="text-muted-foreground mt-0.5 truncate text-xs">
                         {[g.phone, g.email].filter(Boolean).join(' · ')}
@@ -363,7 +365,8 @@ export function GuardsClient({
                 Guard ID:{' '}
                 <span className="bg-background rounded px-2 py-0.5 font-mono font-medium">
                   {justAdded.code}
-                </span>
+                </span>{' '}
+                <CopyButton value={justAdded.code} className="align-middle" />
               </p>
               <p className="text-muted-foreground mt-2 text-xs">
                 Share this with the guard. They enter it at the gate along
