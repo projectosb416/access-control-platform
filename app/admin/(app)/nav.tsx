@@ -2,14 +2,22 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { LayoutDashboard, DoorOpen, ShieldCheck, Clock, Activity } from 'lucide-react'
+import {
+  LayoutDashboard,
+  DoorOpen,
+  ShieldCheck,
+  Clock,
+  Activity,
+  Building2,
+} from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 
 /**
  * Admin navigation.
  *
- * Five items — at the bottom-bar ceiling. When a sixth is added, promote
- * one to a "More" menu or move Activity/Reports to a secondary tier.
+ * Six items — at the bottom-bar ceiling. When a seventh is added,
+ * promote one to a "More" menu or move secondary items off the primary
+ * bar. All labels are one word for compact display.
  */
 
 interface NavItem {
@@ -19,8 +27,9 @@ interface NavItem {
 }
 
 const ITEMS: NavItem[] = [
-  { href: '/admin', label: 'Dashboard', icon: LayoutDashboard },
+  { href: '/admin', label: 'Home', icon: LayoutDashboard },
   { href: '/admin/gates', label: 'Gates', icon: DoorOpen },
+  { href: '/admin/units', label: 'Units', icon: Building2 },
   { href: '/admin/guards', label: 'Guards', icon: ShieldCheck },
   { href: '/admin/shifts', label: 'Shifts', icon: Clock },
   { href: '/admin/activity', label: 'Activity', icon: Activity },
