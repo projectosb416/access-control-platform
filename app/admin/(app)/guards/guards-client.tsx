@@ -19,15 +19,16 @@ import { createClient } from '@/lib/supabase/client'
 import type { GuardRow } from './page'
 
 /**
- * Guard list + add form + deactivate action.
+ * Guard list + add + row actions.
  *
- * "Remove" means deactivate — status flips to 'inactive'. The guard row
- * stays in the database because shift history and access events reference
- * the guard. Removing the row would break every past access event tied to
- * that guard. Handoff §38.
+ * Row actions on an inactive guard:
+ *   Reactivate         → status back to 'active'
+ *   Remove permanently → calls remove_guard_profile RPC. Succeeds only
+ *                        if the guard has no history; otherwise the DB
+ *                        raises GUARD_HAS_HISTORY and we surface it.
  *
- * Deactivated guards stay visible in the list (greyed out) so admin can
- * see historical context. A filter chip at the top hides them by default.
+ * Active guards only offer Deactivate. Going active → inactive → removed
+ * is deliberate: two steps prevents accidental deletion of an in-use guard.
  */
 
 type StatusFilter = 'active' | 'all'
@@ -43,20 +44,23 @@ export function GuardsClient({
 }) {
   const router = useRouter()
 
-  // Add form state
   const [fullName, setFullName] = useState('')
   const [phone, setPhone] = useState('')
   const [email, setEmail] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [notice, setNotice] = useState<string | null>(null)
   const [justAdded, setJustAdded] = useState<{ name: string; code: string } | null>(null)
 
-  // List filter
   const [filter, setFilter] = useState<StatusFilter>('active')
 
-  // Deactivate dialog
   const [deactivateTarget, setDeactivateTarget] = useState<GuardRow | null>(null)
   const [deactivating, setDeactivating] = useState(false)
+
+  const [removeTarget, setRemoveTarget] = useState<GuardRow | null>(null)
+  const [removing, setRemoving] = useState(false)
+
+  const [reactivatingId, setReactivatingId] = useState<string | null>(null)
 
   const operational = orgStatus === 'active'
 
@@ -64,9 +68,14 @@ export function GuardsClient({
     filter === 'active' ? g.status === 'active' : true,
   )
 
+  function clearMessages() {
+    setError(null)
+    setNotice(null)
+  }
+
   async function handleSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault()
-    setError(null)
+    clearMessages()
     setJustAdded(null)
 
     const trimmedName = fullName.trim()
@@ -110,6 +119,7 @@ export function GuardsClient({
 
   async function handleDeactivate() {
     if (!deactivateTarget) return
+    clearMessages()
     setDeactivating(true)
     try {
       const supabase = createClient()
@@ -123,12 +133,64 @@ export function GuardsClient({
         return
       }
 
+      setNotice(`${deactivateTarget.full_name} deactivated.`)
       setDeactivateTarget(null)
       router.refresh()
     } catch {
       setError('Could not deactivate. Please try again.')
     } finally {
       setDeactivating(false)
+    }
+  }
+
+  async function handleReactivate(g: GuardRow) {
+    clearMessages()
+    setReactivatingId(g.id)
+    try {
+      const supabase = createClient()
+      const { error: updateError } = await supabase
+        .from('guard_profiles')
+        .update({ status: 'active' })
+        .eq('id', g.id)
+
+      if (updateError) {
+        setError('Could not reactivate. Please try again.')
+        return
+      }
+
+      setNotice(`${g.full_name} reactivated.`)
+      router.refresh()
+    } catch {
+      setError('Could not reactivate. Please try again.')
+    } finally {
+      setReactivatingId(null)
+    }
+  }
+
+  async function handleRemove() {
+    if (!removeTarget) return
+    clearMessages()
+    setRemoving(true)
+    try {
+      const supabase = createClient()
+      const { error: rpcError } = await supabase.rpc('remove_guard_profile', {
+        p_organization_id: organizationId,
+        p_guard_profile_id: removeTarget.id,
+      })
+
+      if (rpcError) {
+        setError(mapRemoveError(rpcError.message, removeTarget.full_name))
+        setRemoveTarget(null)
+        return
+      }
+
+      setNotice(`${removeTarget.full_name} permanently removed.`)
+      setRemoveTarget(null)
+      router.refresh()
+    } catch {
+      setError('Could not remove. Please try again.')
+    } finally {
+      setRemoving(false)
     }
   }
 
@@ -150,23 +212,11 @@ export function GuardsClient({
         </div>
       ) : null}
 
-      {/* Filter */}
       <div className="mb-4 flex items-center gap-2">
-        <FilterChip
-          label="Active"
-          value="active"
-          current={filter}
-          onSelect={setFilter}
-        />
-        <FilterChip
-          label="All"
-          value="all"
-          current={filter}
-          onSelect={setFilter}
-        />
+        <FilterChip label="Active" value="active" current={filter} onSelect={setFilter} />
+        <FilterChip label="All" value="all" current={filter} onSelect={setFilter} />
       </div>
 
-      {/* Existing guards */}
       <section className="mb-8">
         {visibleGuards.length === 0 ? (
           <p className="text-muted-foreground rounded-lg border border-dashed px-4 py-6 text-center text-sm">
@@ -178,11 +228,12 @@ export function GuardsClient({
           <ul className="flex flex-col gap-2">
             {visibleGuards.map((g) => {
               const inactive = g.status !== 'active'
+              const reactivating = reactivatingId === g.id
               return (
                 <li
                   key={g.id}
                   className={`flex items-start justify-between gap-4 rounded-lg border px-4 py-3 ${
-                    inactive ? 'bg-muted/10 opacity-60' : 'bg-muted/30'
+                    inactive ? 'bg-muted/10 opacity-80' : 'bg-muted/30'
                   }`}
                 >
                   <div className="min-w-0">
@@ -206,6 +257,7 @@ export function GuardsClient({
                     >
                       {g.status}
                     </span>
+
                     {!inactive && operational ? (
                       <button
                         type="button"
@@ -215,6 +267,26 @@ export function GuardsClient({
                         Deactivate
                       </button>
                     ) : null}
+
+                    {inactive && operational ? (
+                      <div className="flex flex-col items-end gap-1">
+                        <button
+                          type="button"
+                          onClick={() => void handleReactivate(g)}
+                          disabled={reactivating}
+                          className="text-muted-foreground hover:text-foreground text-xs underline underline-offset-4 disabled:opacity-50"
+                        >
+                          {reactivating ? 'Reactivating…' : 'Reactivate'}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setRemoveTarget(g)}
+                          className="text-muted-foreground hover:text-destructive text-xs underline underline-offset-4"
+                        >
+                          Remove permanently
+                        </button>
+                      </div>
+                    ) : null}
                   </div>
                 </li>
               )
@@ -223,16 +295,12 @@ export function GuardsClient({
         )}
       </section>
 
-      {/* Add guard form */}
       <section>
         <h2 className="text-muted-foreground mb-3 text-sm font-medium tracking-wide uppercase">
           Add a guard
         </h2>
 
-        <form
-          onSubmit={handleSubmit}
-          className="flex flex-col gap-4 rounded-lg border p-5"
-        >
+        <form onSubmit={handleSubmit} className="flex flex-col gap-4 rounded-lg border p-5">
           <div className="grid gap-2">
             <Label htmlFor="guardFullName">Full name</Label>
             <Input
@@ -247,10 +315,7 @@ export function GuardsClient({
 
           <div className="grid gap-2">
             <Label htmlFor="guardPhone">
-              Phone{' '}
-              <span className="text-muted-foreground font-normal">
-                (optional)
-              </span>
+              Phone <span className="text-muted-foreground font-normal">(optional)</span>
             </Label>
             <Input
               id="guardPhone"
@@ -265,10 +330,7 @@ export function GuardsClient({
 
           <div className="grid gap-2">
             <Label htmlFor="guardEmail">
-              Email{' '}
-              <span className="text-muted-foreground font-normal">
-                (optional)
-              </span>
+              Email <span className="text-muted-foreground font-normal">(optional)</span>
             </Label>
             <Input
               id="guardEmail"
@@ -285,12 +347,13 @@ export function GuardsClient({
           </div>
 
           {error ? (
-            <p
-              role="alert"
-              className="bg-destructive/10 text-destructive rounded-md px-3 py-2 text-sm"
-            >
+            <p role="alert" className="bg-destructive/10 text-destructive rounded-md px-3 py-2 text-sm">
               {error}
             </p>
+          ) : null}
+
+          {notice ? (
+            <p className="bg-muted rounded-md px-3 py-2 text-sm">{notice}</p>
           ) : null}
 
           {justAdded ? (
@@ -310,11 +373,7 @@ export function GuardsClient({
           ) : null}
 
           <div>
-            <Button
-              type="submit"
-              disabled={!operational || submitting}
-              className="h-11"
-            >
+            <Button type="submit" disabled={!operational || submitting} className="h-11">
               {submitting ? 'Adding…' : 'Add guard'}
             </Button>
           </div>
@@ -330,13 +389,11 @@ export function GuardsClient({
       >
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>
-              Deactivate {deactivateTarget?.full_name}?
-            </AlertDialogTitle>
+            <AlertDialogTitle>Deactivate {deactivateTarget?.full_name}?</AlertDialogTitle>
             <AlertDialogDescription>
-              The guard can no longer start shifts. Their history stays in
-              the platform — past access events and shifts remain visible.
-              You can reactivate them later if needed.
+              The guard can no longer start shifts. Their history stays in the
+              platform — past access events and shifts remain visible. You can
+              reactivate them later.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -349,6 +406,39 @@ export function GuardsClient({
               disabled={deactivating}
             >
               {deactivating ? 'Deactivating…' : 'Deactivate'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Remove permanently confirmation */}
+      <AlertDialog
+        open={removeTarget !== null}
+        onOpenChange={(open) => {
+          if (!open) setRemoveTarget(null)
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              Permanently remove {removeTarget?.full_name}?
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              This cannot be undone. Removal succeeds only if the guard has
+              never worked a shift or processed an access event. If they have
+              history, use Deactivate instead — the record is preserved.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={removing}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={(e) => {
+                e.preventDefault()
+                void handleRemove()
+              }}
+              disabled={removing}
+            >
+              {removing ? 'Removing…' : 'Remove permanently'}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -399,4 +489,23 @@ function mapRpcError(message: string): string {
     return 'Your session has expired. Please log in again.'
   }
   return 'Could not add the guard. Please try again.'
+}
+
+function mapRemoveError(message: string, name: string): string {
+  if (message.includes('GUARD_HAS_HISTORY')) {
+    return `${name} has access history and cannot be permanently removed. Deactivate them instead — the record is preserved.`
+  }
+  if (message.includes('GUARD_NOT_INACTIVE')) {
+    return `${name} is still active. Deactivate them first, then remove.`
+  }
+  if (message.includes('GUARD_NOT_FOUND')) {
+    return 'This guard no longer exists.'
+  }
+  if (message.includes('NOT_AUTHORIZED')) {
+    return 'You don’t have permission to remove guards.'
+  }
+  if (message.includes('SUBSCRIPTION_INACTIVE')) {
+    return 'Your organization is not active.'
+  }
+  return 'Could not remove the guard. Please try again.'
 }
