@@ -171,7 +171,16 @@ async function postHandler(request: NextRequest) {
     .select('id, credential, status')
     .eq('organization_id', organizationId)
     .eq('lookup_key', lookupKey)
-    .in('status', ['created', 'active', 'in_use'])
+    // No status filter: the evaluate_* function below returns the correct
+    // specific result code for terminal-state credentials
+    // (ONE_TIME_ALREADY_CONSUMED, REVOKED_AUTHORIZATION, EXPIRED_AUTHORIZATION,
+    // etc.). Filtering them out here returned a generic INVALID_PIN and hid
+    // the real state from the guard.
+    //
+    // Order by created_at desc: a live credential and a terminal one can
+    // coexist with the same lookup_key (the partial unique index only
+    // covers live rows). The most recently created one is the most relevant.
+    .order('created_at', { ascending: false })
     .limit(1)
 
   if (credError) {
