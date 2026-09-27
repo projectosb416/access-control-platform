@@ -1,6 +1,7 @@
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
-import { UnitsClient, type OccupancyInfo } from './units-client'
+import { UnitsClient } from './units-client'
+import type { OccupancyInfo, UnitRow } from './types'
 
 /**
  * /admin/units — list, add, bulk-create, invite residents.
@@ -167,11 +168,4 @@ export default async function UnitsPage() {
   )
 }
 
-export interface UnitRow {
-  id: string
-  label: string
-  notes: string | null
-  status: string
-  property_id: string
-  property_name: string
-}
+
