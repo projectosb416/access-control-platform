@@ -1,19 +1,15 @@
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
-import { UnitsClient } from './units-client'
+import { UnitsClient, type OccupancyInfo } from './units-client'
 
 /**
- * /admin/units — list, add, and bulk-create units for the org's properties.
+ * /admin/units — list, add, bulk-create, invite residents.
  *
- * Server Component. Fetches properties (for the selector), units joined to
- * their property name, and active occupancies so each unit row can show
- * Vacant/Occupied.
- *
- * No new migration — units table (migration 0006) and units_insert_admin
- * RLS policy (migration 0022) already exist.
- *
- * Handoff §9: unit labels are free text, case-insensitively unique per
- * property. Bulk creation is the primary path — "House 1-200" pattern.
+ * Server Component. Fetches properties, units, and occupancy states in
+ * the shape the client needs to render per-row actions:
+ *   vacant   → Invite resident
+ *   invited  → pending/expired state, Copy link (if code in session), Cancel
+ *   occupied → resident name (eject flow is a later piece)
  */
 
 interface UnitQueryRow {
@@ -23,6 +19,15 @@ interface UnitQueryRow {
   status: string
   property_id: string
   properties: { name: string } | { name: string }[] | null
+}
+
+interface OccupancyQueryRow {
+  id: string
+  unit_id: string
+  status: string
+  account_id: string | null
+  invite_expires_at: string | null
+  invited_at: string | null
 }
 
 function unwrap<T>(v: T | T[] | null | undefined): T | null {
@@ -68,7 +73,6 @@ export default async function UnitsPage() {
     .order('created_at', { ascending: true })
 
   const properties = (propertiesRaw ?? []) as { id: string; name: string }[]
-
   const propertyIds = properties.map((p) => p.id)
 
   let unitsRaw: unknown[] = []
@@ -93,28 +97,72 @@ export default async function UnitsPage() {
     }
   })
 
-  // Active occupancies — used to badge Vacant vs Occupied.
+  // Fetch relevant occupancies (active or invited) for these units.
   const unitIds = units.map((u) => u.id)
-  const occupiedUnitIds = new Set<string>()
+  let occRaw: unknown[] = []
   if (unitIds.length > 0) {
-    const { data: occRows } = await supabase
+    const { data } = await supabase
       .from('occupancies')
-      .select('unit_id')
+      .select('id, unit_id, status, account_id, invite_expires_at, invited_at')
       .in('unit_id', unitIds)
-      .eq('status', 'active')
-    for (const o of (occRows ?? []) as { unit_id: string }[]) {
-      occupiedUnitIds.add(o.unit_id)
+      .in('status', ['active', 'invited'])
+    occRaw = data ?? []
+  }
+  const occupancies = occRaw as OccupancyQueryRow[]
+
+  // Look up resident names for occupied units.
+  const accountIds = Array.from(
+    new Set(
+      occupancies
+        .filter((o) => o.status === 'active' && o.account_id)
+        .map((o) => o.account_id as string),
+    ),
+  )
+  const nameByAccount = new Map<string, string>()
+  if (accountIds.length > 0) {
+    const { data: peopleRows } = await supabase
+      .from('people')
+      .select('account_id, full_name')
+      .eq('organization_id', organizationId)
+      .in('account_id', accountIds)
+
+    for (const p of (peopleRows ?? []) as {
+      account_id: string
+      full_name: string
+    }[]) {
+      nameByAccount.set(p.account_id, p.full_name)
     }
   }
 
-  const occupiedIdsArray = Array.from(occupiedUnitIds)
+  // Build per-unit occupancy state.
+  const occupancyByUnit: Record<string, OccupancyInfo> = {}
+  for (const u of units) {
+    occupancyByUnit[u.id] = { kind: 'vacant' }
+  }
+  for (const o of occupancies) {
+    if (o.status === 'active') {
+      occupancyByUnit[o.unit_id] = {
+        kind: 'occupied',
+        occupancy_id: o.id,
+        resident_name: o.account_id ? nameByAccount.get(o.account_id) ?? null : null,
+      }
+    } else if (o.status === 'invited') {
+      occupancyByUnit[o.unit_id] = {
+        kind: 'invited',
+        occupancy_id: o.id,
+        expires_at: o.invite_expires_at,
+        invited_at: o.invited_at,
+      }
+    }
+  }
 
   return (
     <UnitsClient
+      organizationId={organizationId}
       orgStatus={(org?.status as string) ?? 'unknown'}
       properties={properties}
       initialUnits={units}
-      occupiedUnitIds={occupiedIdsArray}
+      occupancyByUnit={occupancyByUnit}
     />
   )
 }
