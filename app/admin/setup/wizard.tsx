@@ -32,6 +32,9 @@ interface WizardData {
   adminFullName: string
   propertyName: string
   unitLabel: string
+  propertyAddress: string
+  propertyCity: string
+  propertyState: string
 }
 
 const EMPTY: WizardData = {
@@ -40,6 +43,9 @@ const EMPTY: WizardData = {
   adminFullName: '',
   propertyName: '',
   unitLabel: '',
+  propertyAddress: '',
+  propertyCity: '',
+  propertyState: '',
 }
 
 const TOTAL_STEPS = 4
@@ -109,6 +115,9 @@ export function SetupWizard() {
           p_admin_full_name: data.adminFullName.trim(),
           p_property_name: data.propertyName.trim(),
           p_unit_label: data.unitLabel.trim() || null,
+          p_property_address: data.propertyAddress.trim() || null,
+          p_property_city: data.propertyCity.trim() || null,
+          p_property_state: data.propertyState.trim() || null,
         },
       )
 
@@ -354,6 +363,14 @@ function StepAdmin({
   )
 }
 
+const NIGERIAN_STATES = [
+  'Abia','Adamawa','Akwa Ibom','Anambra','Bauchi','Bayelsa','Benue',
+  'Borno','Cross River','Delta','Ebonyi','Edo','Ekiti','Enugu','FCT',
+  'Gombe','Imo','Jigawa','Kaduna','Kano','Katsina','Kebbi','Kogi',
+  'Kwara','Lagos','Nasarawa','Niger','Ogun','Ondo','Osun','Oyo',
+  'Plateau','Rivers','Sokoto','Taraba','Yobe','Zamfara',
+] as const
+
 function StepProperty({
   data,
   update,
@@ -377,6 +394,55 @@ function StepProperty({
           Usually the same as the organization. Different if you run
           multiple sites under one organization.
         </p>
+      </div>
+
+      <div className="grid gap-2">
+        <Label htmlFor="propertyAddress">
+          Street address{' '}
+          <span className="text-muted-foreground font-normal">(optional)</span>
+        </Label>
+        <Input
+          id="propertyAddress"
+          value={data.propertyAddress}
+          onChange={(e) => update('propertyAddress', e.target.value)}
+          placeholder="e.g. 12 Adeniyi Jones Avenue"
+          className="h-11"
+        />
+      </div>
+
+      <div className="grid grid-cols-2 gap-4">
+        <div className="grid gap-2">
+          <Label htmlFor="propertyCity">
+            City{' '}
+            <span className="text-muted-foreground font-normal">(optional)</span>
+          </Label>
+          <Input
+            id="propertyCity"
+            value={data.propertyCity}
+            onChange={(e) => update('propertyCity', e.target.value)}
+            placeholder="e.g. Ikeja"
+            className="h-11"
+          />
+        </div>
+        <div className="grid gap-2">
+          <Label htmlFor="propertyState">
+            State{' '}
+            <span className="text-muted-foreground font-normal">(optional)</span>
+          </Label>
+          <select
+            id="propertyState"
+            value={data.propertyState}
+            onChange={(e) => update('propertyState', e.target.value)}
+            className="border-input bg-background h-11 rounded-md border px-3 text-sm"
+          >
+            <option value="">Select state</option>
+            {NIGERIAN_STATES.map((s) => (
+              <option key={s} value={s}>
+                {s}
+              </option>
+            ))}
+          </select>
+        </div>
       </div>
 
       <div className="grid gap-2">
@@ -413,6 +479,13 @@ function StepReview({ data }: { data: WizardData }) {
         <ReviewRow label="Type" value={orgTypeLabel(data.orgType)} />
         <ReviewRow label="Your name" value={data.adminFullName} />
         <ReviewRow label="Property" value={data.propertyName} />
+        <ReviewRow
+          label="City / State"
+          value={
+            [data.propertyCity, data.propertyState].filter(Boolean).join(', ') || '—'
+          }
+          muted={!data.propertyCity && !data.propertyState}
+        />
         <ReviewRow
           label="First unit"
           value={data.unitLabel || '—'}
