@@ -53,6 +53,7 @@ Postgres error string to a client.
 | `ORG_NAME_REQUIRED` | 400 | Blank org name in setup |
 | `ADMIN_NAME_REQUIRED` | 400 | Blank admin name in setup |
 | `PROPERTY_NAME_REQUIRED` | 400 | Blank property name in setup |
+| `FULL_NAME_REQUIRED` | 400 | Blank visitor full name |
 | `INVALID_ORG_TYPE` | 400 | Not residential / workplace / other |
 | `INVALID_PURPOSE` | 400 | payment purpose not in enum |
 | `LOCKOUT_SECONDS_MUST_BE_POSITIVE` | 400 | `<= 0` |
@@ -67,6 +68,7 @@ Postgres error string to a client.
 | `SESSION_NOT_FOUND` | 404 | |
 | `PLAN_NOT_FOUND` | 404 | |
 | `PLAN_NOT_AVAILABLE` | 404 | Plan exists but is not active |
+| `UNIT_NOT_FOUND` | 404 | Unit UUID does not exist |
 
 ### Conflict — state prevents the action
 
