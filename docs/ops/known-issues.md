@@ -349,3 +349,232 @@ for the no-membership case — closing the loop in both directions.
 
 **Test to add when fixed:** Sign up → complete setup → navigate directly
 to `/admin/setup` → expect redirect to `/admin`, no second org created.
+
+---
+
+## Issue 12 — Expired guest PINs remain status='active' until a manual status-flip
+
+**Severity:** Low
+**Area:** Data integrity / display
+**Found:** 2026-09-28 during 4a.iii (guest PIN list) design
+
+**Symptom:** When a guest PIN's `valid_until` passes, nothing flips
+`status` from `'active'` to `'expired'`. The DB correctly rejects the
+PIN at the gate (`evaluate_entry` returns `EXPIRED_AUTHORIZATION`), but
+the row's status column remains stale at `'active'`.
+
+**Why it matters:** the resident-facing list filters by
+`valid_until > now()`, so an expired PIN does not falsely show as live
+(see `list_guest_pins_for_unit`, migration 0051). But any future report
+that counts `status = 'active'` rows would include expired entries.
+
+**Current workaround:** every query that needs "currently usable" must
+also filter `valid_until > now()`. The list RPC does this via branch A
+of its filter.
+
+**Permanent fix:** a scheduled job (pg_cron or a Cloudflare Cron Trigger
+hitting a maintenance endpoint) that runs:
+
+    update public.authorizations
+       set status = 'expired'
+     where status = 'active'
+       and valid_until <= now();
+
+    update public.access_credentials
+       set status = 'expired'
+     where status = 'active'
+       and authorization_id in (
+         select id from public.authorizations where status = 'expired'
+       );
+
+Order matters: flip the authorization first, then the credentials via
+join, so the credential update is scoped to the same transaction.
+
+**Target phase:** Phase 11, alongside subscription-expiry cron work.
+
+**Impact if not fixed:** discipline burden — every "is it live" check
+must remember both predicates. Not a data bug.
+
+---
+
+## Issue 13 — Guest PIN endpoint rate limit is 20/hour; product intends 10/day
+
+**Severity:** Medium
+**Area:** Product / abuse prevention
+**Found:** 2026-09-28 after `POST /api/resident/guest-pin` shipped (bb4bc4a)
+
+**Symptom:** the endpoint uses `MAX_PINS_PER_HOUR = 20` with a 60-minute
+window. Product intent (confirmed 2026-09-28) is 10 per day per resident,
+scaleable by the org's subscription plan. 20/hour = 480/day worst case —
+roughly 48x the intended limit.
+
+**Why it matters:** a compromised resident account could generate 480
+live credentials per day. Every one is a permanent row in
+`authorizations` and `audit_events` (both append-only per Locked
+Decisions). Cost: DB growth, plus pressure on the credential lookup
+space.
+
+**Current workaround:** none. The endpoint is more permissive than the
+product intends.
+
+**Permanent fix — two steps:**
+
+1. **Correct the constant now.** Change `MAX_PINS_PER_HOUR = 20` to
+   `MAX_PINS_PER_DAY = 10`, window = 24 hours. One file, small commit.
+2. **Migrate to entitlements.** Move the check into `rate_limit_attempt`
+   as a fourth scope (`resident_pin_creation`), reading the threshold
+   from the org's plan via `rate_limit_attempt_for_org`. Same pattern
+   the guard endpoints use. Requires a plan entitlement key
+   (`max_guest_pins_per_day`).
+
+**Target phase:** step 1 next session; step 2 Phase 10/11 (with
+entitlements). Do not bundle step 2 with step 1 — the entitlement key
+may not exist yet.
+
+**Impact if not fixed:** abuse surface larger than designed. Not a
+privilege escalation — resource exhaustion only.
+
+---
+
+## Issue 14 — Supabase CLI pinned at 2.34.3; upstream is 2.118.0
+
+**Severity:** Low
+**Area:** Tooling
+**Found:** 2026-09-28 during CI runs
+
+**Symptom:** every CI run logs:
+
+    A new version of Supabase CLI is available: v2.118.0 (currently installed v2.34.3)
+
+**Why it matters:** the pinned version works, but the gap is 84 minor
+releases. Each release can add flags, fix bugs, or change defaults. A
+surprise forced upgrade during a critical schema migration is worse than
+a planned one.
+
+**Current workaround:** none needed. Pinned version applies migrations
+cleanly and runs `test db` green.
+
+**Permanent fix:** review the CLI changelog between 2.34.3 and 2.118.0
+for behavioral changes affecting `supabase db push` and `supabase test
+db`. Upgrade in an isolated commit — no other code changes — so any
+regression is attributable. Verify with a full CI run before continuing
+any feature work.
+
+**Target phase:** Phase 10 or 11, ideally before a schema-heavy phase.
+
+**Impact if not fixed:** technical debt accumulating silently. Risk of
+a forced upgrade at an inconvenient moment.
+
+---
+
+## Issue 15 — Error-to-HTTP mapping duplicated across route handlers
+
+**Severity:** Low
+**Area:** Code quality
+**Found:** 2026-09-28 after the resident guest PIN endpoints were added
+
+**Symptom:** every API route that calls a Postgres function contains its
+own copy of two helpers, `extractDbErrorCode(message)` and
+`statusForCode(code)`. Currently duplicated in:
+
+- `app/api/guard/entry/route.ts`
+- `app/api/guard/exit/route.ts`
+- `app/api/guard-session/start/route.ts`
+- `app/api/resident/guest-pin/route.ts`
+- `app/api/resident/guest-pin/revoke/route.ts`
+
+Each copy has a different `KNOWN_CODES` list, scoped to the errors its
+function can raise.
+
+**Why it matters:** the canonical source of truth is
+`docs/phase-7/error-http-mapping.md`, and the mapping is deterministic.
+Five copies means five drift opportunities. Adding a new code requires
+updating every route whose function can raise it — a discipline the next
+developer has to know about.
+
+**Current workaround:** manual review — each file's list is checked
+against its function's `raise exception` statements at write time.
+
+**Permanent fix:** extract to `lib/api/error-mapping.ts` with a single
+`mapErrCodeToStatus(code)` covering the full doc. Each route imports
+it. The trade-off — a route "knows" about codes its function cannot
+raise — is acceptable because unknown codes default to
+`500 SYSTEM_UNAVAILABLE` and `extractDbErrorCode` matches on substrings
+anyway.
+
+**Target phase:** Phase 10.
+
+**Impact if not fixed:** a code added to a function but forgotten in
+its route's list silently maps to 500 instead of the correct 4xx.
+
+---
+
+## Issue 16 — authorizations_insert_primary_resident uses the same row-scoped shape as the dropped UPDATE policy
+
+**Severity:** Medium
+**Area:** Security / RLS
+**Found:** 2026-09-28 during migration 0053 (drop of authorizations_update_primary_resident)
+
+**Symptom:** the INSERT policy `authorizations_insert_primary_resident`
+has the same structural shape as the UPDATE policy dropped in 0053. It
+scopes by row — `scope_unit_id = current_occupied_unit_id(organization_id)`
+— but not by column. A resident could INSERT an authorization with
+arbitrary values, provided it names a unit they occupy.
+
+**Why it matters:** the exploit surface is narrower than the UPDATE
+case. A client cannot create a matching credential because
+`access_credentials` has zero RLS policies — it is service-role-only
+by design. So a resident could pollute the `authorizations` table with
+fake rows, but could not produce anything the gate would accept.
+
+That is data-integrity pollution, not privilege escalation. Still worth
+fixing because audit queries and future reports assume `authorizations`
+reflects reality.
+
+**Current workaround:** none. The pollution is possible but has no
+operational effect visible to a guard or a resident today.
+
+**Permanent fix:** same pattern as the 0053 UPDATE fix — drop the policy
+and route resident-side inserts through the existing SECURITY DEFINER
+function `create_guest_pin_for_unit` (0050), which validates every field
+and enforces the subscription lock. Before dropping, verify with grep
+that no code path relies on client-side INSERT to `authorizations`.
+
+**Target phase:** Phase 10, alongside the endpoint integration test gap
+(Issue 9).
+
+**Impact if not fixed:** theoretically pollutable table. Practically,
+only a malicious client or an accidentally buggy one triggers it.
+
+---
+
+## Issue 17 — Pre-push checklist omits the test gate
+
+**Severity:** Low
+**Area:** Process / documentation
+**Found:** 2026-09-28 during the 4a resident-journey work
+
+**Symptom:** HANDOFF.md §2 rule 10 reads "Nothing stages until lint +
+typecheck + build pass locally." The CI `verify` job runs lint +
+typecheck + test + build. Locally, the test step
+(`npm test` = vitest, 18 tests under `tests/unit/`) was repeatedly
+skipped — local runs proved only 3 of the 4 gates.
+
+**Why it matters:** a local test failure would not be caught pre-commit;
+it would surface in CI. The gap is invisible while tests pass, but
+"passed locally" was not the full claim it appeared to be.
+
+**Current workaround:** commits still go through CI, so nothing broken
+shipped. The gap is in local verification completeness, not correctness.
+
+**Permanent fix:** update HANDOFF.md §2 rule 10 to read "lint +
+typecheck + test + build." Add the note that `npm test` runs vitest in
+watch mode on an interactive terminal and must be invoked as
+`npm test -- --run` (or `npm run test:run`) to exit after one pass.
+
+**Target phase:** any upcoming cleanup. Small doc-only change.
+
+**Impact if not fixed:** local verification remains incomplete relative
+to CI. A local-only test regression still gates at CI, but consumes a
+CI cycle that could have been avoided.
+
