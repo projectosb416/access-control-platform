@@ -5,6 +5,10 @@
 -- residency check, created_by filter, scope_unit_id filter, the three-branch
 -- status filter, and entry_count.
 --
+-- access_events has NOT NULL on gate_id and guard_profile_id, so a gate
+-- fixture and a guard_profile (which needs its own person row) are required
+-- to insert the GRANTED entry event that drives assertion H.
+--
 -- Fixtures use UUIDs prefixed 'd9'. Wrapped in begin/rollback.
 -- ============================================================================
 
@@ -19,7 +23,7 @@ select plan(8);
 -- ============================================================================
 
 insert into auth.users (id, email, created_at, updated_at) values
-  ('d9000000-0000-0000-0000-000000000001', 'test-listpin-admin@test.com',    now(), now()),
+  ('d9000000-0000-0000-0000-000000000001', 'test-listpin-admin@test.com',      now(), now()),
   ('d9000000-0000-0000-0000-000000000002', 'test-listpin-resident-a@test.com', now(), now()),
   ('d9000000-0000-0000-0000-000000000003', 'test-listpin-resident-b@test.com', now(), now());
 
@@ -58,6 +62,12 @@ insert into public.units (id, property_id, label, status) values
   ('d9000000-0000-0000-0000-000000000040', 'd9000000-0000-0000-0000-000000000030', 'Unit 1', 'active'),
   ('d9000000-0000-0000-0000-000000000041', 'd9000000-0000-0000-0000-000000000030', 'Unit 2', 'active');
 
+-- Gate fixture — required NOT NULL on access_events.gate_id
+insert into public.gates (id, organization_id, name, status)
+values ('d9000000-0000-0000-0000-000000000070',
+        'd9000000-0000-0000-0000-000000000010',
+        'Test Gate', 'active');
+
 -- Resident persons
 insert into public.people (id, organization_id, account_id, full_name, status) values
   ('d9000000-0000-0000-0000-000000000050',
@@ -68,6 +78,19 @@ insert into public.people (id, organization_id, account_id, full_name, status) v
    'd9000000-0000-0000-0000-000000000010',
    (select id from public.accounts where auth_user_id = 'd9000000-0000-0000-0000-000000000003'),
    'Resident B', 'active');
+
+-- Guard person (guards have no account per §Locked Decisions)
+insert into public.people (id, organization_id, full_name, status)
+values ('d9000000-0000-0000-0000-000000000052',
+        'd9000000-0000-0000-0000-000000000010',
+        'Guard Test', 'active');
+
+-- Guard profile — required NOT NULL on access_events.guard_profile_id
+insert into public.guard_profiles (id, organization_id, person_id, guard_code, status)
+values ('d9000000-0000-0000-0000-000000000080',
+        'd9000000-0000-0000-0000-000000000010',
+        'd9000000-0000-0000-0000-000000000052',
+        'GU-TEST01', 'active');
 
 -- Visitor persons (account_id NULL)
 insert into public.people (id, organization_id, full_name, status) values
@@ -101,8 +124,7 @@ insert into public.authorizations (
   (select id from public.accounts where auth_user_id = 'd9000000-0000-0000-0000-000000000002')
 );
 
--- A2: status still 'active' but valid_until already in the past (branch C:
---     recently expired but status-flip lagging)
+-- A2: status still 'active' but valid_until already in the past (branch C)
 insert into public.authorizations (
   id, organization_id, person_id, scope_unit_id, appointment_id,
   access_type, purpose, note, host_person_id,
@@ -132,7 +154,7 @@ insert into public.authorizations (
   (select id from public.accounts where auth_user_id = 'd9000000-0000-0000-0000-000000000003')
 );
 
--- A_other_unit: active, created_by A, but on Unit 2 — must be hidden when querying Unit 1
+-- A_other_unit: active, created_by A, but on Unit 2 — hidden when querying Unit 1
 insert into public.authorizations (
   id, organization_id, person_id, scope_unit_id, appointment_id,
   access_type, purpose, note, host_person_id,
@@ -147,16 +169,21 @@ insert into public.authorizations (
   (select id from public.accounts where auth_user_id = 'd9000000-0000-0000-0000-000000000002')
 );
 
--- One GRANTED entry event on A1 — drives entry_count
+-- One GRANTED entry event on A1 — drives entry_count.
+-- gate_id and guard_profile_id are NOT NULL on access_events.
 insert into public.access_events (
   id, organization_id, direction, result_code, reason,
-  authorization_id, person_id, metadata, recorded_at
+  authorization_id, person_id,
+  gate_id, guard_profile_id,
+  metadata, recorded_at
 ) values (
   'd9000000-0000-0000-0000-0000000000e1',
   'd9000000-0000-0000-0000-000000000010',
   'entry', 'GRANTED', 'test entry',
   'd9000000-0000-0000-0000-0000000000a1',
   'd9000000-0000-0000-0000-000000000060',
+  'd9000000-0000-0000-0000-000000000070',
+  'd9000000-0000-0000-0000-000000000080',
   '{}'::jsonb, now()
 );
 
