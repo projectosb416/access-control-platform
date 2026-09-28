@@ -2,16 +2,21 @@ import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
 import { LogoutButton } from './logout-button'
+import { GuestPinSection } from './guest-pin-section'
+import type { GuestPin } from './types'
 
 /**
- * /resident — placeholder dashboard.
+ * /resident — resident dashboard.
  *
  * auth.users.id (Supabase user.id) is NOT accounts.id. Every query here
  * resolves through accounts.auth_user_id explicitly. This was the original
  * bug: filtering people/occupancies by user.id returned zero rows because
  * those tables reference accounts.id, not the auth id.
  *
- * Real dashboard content (household, guest PINs, activity) is piece 4.
+ * The guest PIN section below the header is the daily action. It reads
+ * from list_guest_pins_for_unit (migration 0051), which is SECURITY
+ * DEFINER because people RLS hides visitor rows (account_id NULL) from
+ * residents.
  */
 
 function unwrap<T>(v: T | T[] | null | undefined): T | null {
@@ -79,12 +84,13 @@ export default async function ResidentHomePage() {
     )
   }
 
-  // Step 3: active occupancy for this account. At most one (partial unique
-  // index occupancies_one_active_per_account).
+  // Step 3: active occupancy for this account. At most one
+  // (occupancies_one_active_per_account). Includes units.id because the
+  // guest PIN RPC needs the unit UUID.
   const { data: occupancy } = accountId
     ? await supabase
         .from('occupancies')
-        .select('id, units!inner(label, properties!inner(name))')
+        .select('id, units!inner(id, label, properties!inner(name))')
         .eq('account_id', accountId)
         .eq('status', 'active')
         .limit(1)
@@ -93,12 +99,26 @@ export default async function ResidentHomePage() {
 
   const occ = occupancy as unknown as {
     units:
-      | { label: string; properties: { name: string } | { name: string }[] }
-      | { label: string; properties: { name: string } | { name: string }[] }[]
+      | { id: string; label: string; properties: { name: string } | { name: string }[] }
+      | { id: string; label: string; properties: { name: string } | { name: string }[] }[]
   } | null
 
   const unit = occ ? unwrap(occ.units) : null
   const property = unit ? unwrap(unit.properties) : null
+
+  // Step 4: guest PINs for this unit. Server fetch through the RPC because
+  // visitor person rows are not visible to residents under people RLS.
+  let guestPins: GuestPin[] = []
+  if (unit?.id) {
+    const { data: pins } = await supabase.rpc('list_guest_pins_for_unit', {
+      p_unit_id: unit.id,
+    })
+    guestPins = (pins ?? []) as GuestPin[]
+  }
+
+  // Timestamp is computed once per request and passed to the client so
+  // server and client render identical expiry labels.
+  const nowIso = new Date().toISOString()
 
   return (
     <main className="flex flex-1 flex-col px-6 py-10">
@@ -119,13 +139,24 @@ export default async function ResidentHomePage() {
         <LogoutButton />
       </header>
 
-      <section className="bg-muted/40 rounded-lg border p-5">
-        <h2 className="text-base font-medium">Dashboard coming soon</h2>
-        <p className="text-muted-foreground mt-1 text-sm">
-          Household management, guest access, and unit activity will appear
-          here.
-        </p>
-      </section>
+      {unit?.id ? (
+        <GuestPinSection
+          unitId={unit.id}
+          estateName={property?.name ?? 'Your estate'}
+          unitLabel={unit.label}
+          residentName={person.full_name}
+          initialPins={guestPins}
+          nowIso={nowIso}
+        />
+      ) : (
+        <section className="bg-muted/40 rounded-lg border p-5">
+          <h2 className="text-base font-medium">No unit yet</h2>
+          <p className="text-muted-foreground mt-1 text-sm">
+            Ask your estate admin for an invite link, or paste a code you
+            already received.
+          </p>
+        </section>
+      )}
     </main>
   )
 }
