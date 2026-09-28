@@ -69,6 +69,7 @@ Postgres error string to a client.
 | `PLAN_NOT_FOUND` | 404 | |
 | `PLAN_NOT_AVAILABLE` | 404 | Plan exists but is not active |
 | `UNIT_NOT_FOUND` | 404 | Unit UUID does not exist |
+| `AUTHORIZATION_NOT_FOUND` | 404 | Guest PIN authorization not found |
 
 ### Conflict — state prevents the action
 
@@ -90,6 +91,7 @@ Postgres error string to a client.
 | `PERSON_NOT_ACTIVE` | 409 | |
 | `UNIT_NOT_IN_ORG` | 409 | |
 | `UNIT_NOT_ACTIVE` | 409 | |
+| `NOT_REVOKABLE` | 409 | Authorization is completed or expired |
 | `APPOINTMENT_NOT_IN_ORG` | 409 | |
 | `HOST_NOT_IN_ORG` | 409 | |
 
