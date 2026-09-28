@@ -1,6 +1,11 @@
 -- ============================================================================
--- Migration 0052: revoke_guest_pin
+-- Migration 0054: revoke_guest_pin
 -- ============================================================================
+-- Renumbered from 0052. The original filename (20260928000052_...)
+-- sorted before 0053, which had already been applied to the remote
+-- when this file landed. Supabase CLI refuses to apply a backdated
+-- migration. Function body is unchanged.
+--
 -- Purpose:
 --   Resident-initiated revocation of a guest PIN they created.
 --
