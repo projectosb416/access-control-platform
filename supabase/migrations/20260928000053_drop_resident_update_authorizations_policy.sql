@@ -1,0 +1,62 @@
+-- ============================================================================
+-- Migration 0053: drop authorizations_update_primary_resident policy
+-- ============================================================================
+-- Purpose:
+--   Close a privilege-escalation path. The policy
+--   authorizations_update_primary_resident permitted ANY column update on
+--   ANY authorization where scope_unit_id = current_occupied_unit_id().
+--
+--   RLS policies are row-scoped, not column-scoped. Postgres cannot
+--   restrict which columns an UPDATE changes via a policy. So a resident
+--   holding a valid session could extend valid_until on their own guest
+--   PIN from 2 hours to arbitrary years, rewrite person_id/purpose/note to
+--   obscure the audit trail, or flip a revoked status back to active —
+--   all through the anon-key client embedded in the browser bundle.
+--
+--   The UPDATE also skipped is_org_operational(): unlike the INSERT
+--   policies, it did not enforce the subscription lock. Dropping it
+--   silently re-applies subscription discipline to the UPDATE path.
+--
+-- Why drop instead of narrow:
+--   Narrowing the qual would not help — the column-scope limitation is
+--   structural to RLS, not a tuning parameter. Any resident-side write
+--   that needs to touch specific columns must go through a SECURITY
+--   DEFINER function, which bypasses RLS as the function owner. That is
+--   the pattern migration 0052 (revoke_guest_pin) uses.
+--
+-- Verified safe before drop:
+--   - No TypeScript code performs .update()/.upsert()/.delete() on
+--     public.authorizations (grep across app/ lib/ components/).
+--   - The four migration update sites are all inside SECURITY DEFINER
+--     functions: evaluate_entry (0013), evaluate_exit (0014),
+--     revoke_authorizations_on_household_end (0031, replaced in 0032).
+--     These bypass RLS as the function owner and are unaffected by the
+--     policy drop.
+--   - No pgTAP test relies on the policy (grep of supabase/tests/ for
+--     authorizations UPDATE).
+--
+-- Kept unchanged:
+--   - authorizations_update_admin: admins are trusted at the tenant
+--     boundary and require this for admin-side operations.
+--   - SELECT and INSERT policies for primary_resident / household_member
+--     are unchanged. The guest PIN list RPC (0051) reads via SECURITY
+--     DEFINER and does not depend on the SELECT policies.
+--
+-- Known follow-up (documented in docs/ops/known-issues.md, not fixed
+-- here): authorizations_insert_primary_resident has the same row-scoped
+-- shape. Its exploit surface is narrower — a client cannot create a
+-- matching credential because access_credentials has zero RLS policies —
+-- so it is data-integrity pollution, not privilege escalation. Separate
+-- review, separate migration.
+--
+-- Rollback (for reference only; project migrations are forward-only):
+--   create policy authorizations_update_primary_resident
+--     on public.authorizations for update
+--     using (scope_unit_id is not null
+--            and scope_unit_id = current_occupied_unit_id(organization_id))
+--     with check (scope_unit_id is not null
+--            and scope_unit_id = current_occupied_unit_id(organization_id));
+-- ============================================================================
+
+drop policy if exists authorizations_update_primary_resident
+  on public.authorizations;
