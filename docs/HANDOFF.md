@@ -48,7 +48,7 @@ This discipline has caught four production-class bugs so far. Do not skip.
    visible output. Never guess the fix.
 9. **Trace through behavior before calling something a bug.** False alarms
    waste cycles.
-10. **Nothing stages until lint + typecheck + test + build pass locally.** CI's verify job runs all four; local runs must match. Note: `npm test` runs vitest in watch mode on an interactive terminal — use `npm test -- --run` (or `npm run test:run`) to exit after one pass.
+10. **Nothing stages until lint + typecheck + test + build pass locally.** CI's verify job runs all four; local runs must match. Note: `npm test` runs vitest in watch mode on an interactive terminal — use `npm test -- --run` (or `npm run test:run`) to exit after one pass. On Termux specifically, the default `forks` vitest pool can time out under memory pressure — use `npm test -- --run --pool=threads` locally. CI runs the default pool on Ubuntu runners and is unaffected.
 
 ### Secrets discipline
 - **Never paste a secret into chat.** Not even partial. Rotate if it happens.
