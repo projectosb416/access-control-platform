@@ -402,6 +402,7 @@ must remember both predicates. Not a data bug.
 **Severity:** Medium
 **Area:** Product / abuse prevention
 **Found:** 2026-09-28 after `POST /api/resident/guest-pin` shipped (bb4bc4a)
+**Step 1 fixed:** 2026-09-29 (commit `5e0dcf5`) — constant changed from `MAX_PINS_PER_HOUR = 20` with a 60-minute window to `MAX_PINS_PER_DAY = 10` with a 24-hour window. Step 2 (entitlement-based threshold from `plan_entitlements`) remains deferred.
 
 **Symptom:** the endpoint uses `MAX_PINS_PER_HOUR = 20` with a 60-minute
 window. Product intent (confirmed 2026-09-28) is 10 per day per resident,
@@ -514,6 +515,7 @@ its route's list silently maps to 500 instead of the correct 4xx.
 **Severity:** Medium
 **Area:** Security / RLS
 **Found:** 2026-09-28 during migration 0053 (drop of authorizations_update_primary_resident)
+**Fixed:** 2026-09-29 (commit `0d0935e`) — policy dropped via migration 0055. Verified safe before drop (no TS writes; only SQL insert path is SECURITY DEFINER; pgTAP fixtures run as DB owner; no other policy consumers).
 
 **Symptom:** the INSERT policy `authorizations_insert_primary_resident`
 has the same structural shape as the UPDATE policy dropped in 0053. It
