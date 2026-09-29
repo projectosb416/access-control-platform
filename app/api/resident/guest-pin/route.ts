@@ -29,8 +29,8 @@ import { withSentryRoute } from '@/lib/sentry/route-wrapper'
 
 export const runtime = 'nodejs'
 
-const MAX_PINS_PER_HOUR = 20
-const RATE_WINDOW_MS = 60 * 60 * 1000
+const MAX_PINS_PER_DAY = 10
+const RATE_WINDOW_MS = 24 * 60 * 60 * 1000
 
 type Body = {
   unit_id?: unknown
@@ -172,7 +172,7 @@ async function postHandler(request: NextRequest) {
     return jsonError('SYSTEM_UNAVAILABLE', 500)
   }
 
-  if ((count ?? 0) >= MAX_PINS_PER_HOUR) {
+  if ((count ?? 0) >= MAX_PINS_PER_DAY) {
     return jsonError('RATE_LIMITED', 429)
   }
 
