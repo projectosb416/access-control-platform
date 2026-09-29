@@ -1,0 +1,91 @@
+-- ============================================================================
+-- Migration 0055: drop authorizations_insert_primary_resident policy
+-- ============================================================================
+-- Purpose:
+--   Close an audit / attribution spoofing path. The policy
+--   authorizations_insert_primary_resident (defined in 0009, dropped and
+--   recreated in 0022 to add the subscription lock) permits a resident
+--   to INSERT authorizations scoped to a unit they occupy. Its WITH CHECK
+--   constrains only:
+--
+--     scope_unit_id IS NOT NULL
+--     scope_unit_id = current_occupied_unit_id(organization_id)
+--     is_org_operational(organization_id)
+--
+--   It does NOT constrain created_by or person_id. RLS policies cannot
+--   express column scoping — same structural limitation that forced the
+--   drop in 0053.
+--
+--   Consequence: a resident with a valid session can INSERT a row that
+--   claims another account issued it (created_by = <other>), or that
+--   authorizes a different person (person_id = <any person in the org>).
+--   Every downstream query that trusts authorizations.created_by or
+--   .person_id as ground truth is then compromised.
+--
+-- Not a gate-bypass risk:
+--   access_credentials has zero RLS policies — it is service-role only.
+--   A resident cannot create a matching credential through the anon-key
+--   client. An orphaned authorization row is inert at the gate: the guard
+--   types a PIN, the endpoint computes a lookup_key, and the join to
+--   access_credentials finds nothing. evaluate_entry is never reached.
+--
+--   The severity is data-integrity pollution, not privilege escalation.
+--   But the table is designed to be the ground truth for "who was
+--   authorized" — any future report built on it inherits the pollution.
+--
+-- Why drop instead of narrow:
+--   Narrowing the WITH CHECK would not help. RLS cannot restrict which
+--   columns get written. Resident-side writes must go through SECURITY
+--   DEFINER functions, which run as the function owner and bypass RLS.
+--   That is already the path for legitimate inserts (0050 ->
+--   create_authorization_with_credential). Dropping the policy removes
+--   the spoofing surface without removing any legitimate capability.
+--
+-- Verified safe before drop:
+--   - No TypeScript code performs .insert() / .upsert() / .delete() on
+--     public.authorizations (grep across app/ lib/ components/ workers/).
+--   - No client-side from('authorizations') call performs a write — the
+--     only hit is a SELECT in app/api/resident/guest-pin/route.ts for
+--     the rate check.
+--   - The only SQL insert path is inside
+--     create_authorization_with_credential (migration 0027), which is
+--     SECURITY DEFINER and bypasses RLS.
+--   - pgTAP fixtures insert into authorizations directly, but pg_prove
+--     runs as the database owner (not the authenticated role) — RLS does
+--     not apply to those inserts.
+--   - Policy consumers: created 0009, dropped+recreated 0022, referenced
+--     in 0053's header comment. No other code path uses the policy name.
+--
+-- Legitimate insert path preserved:
+--   create_guest_pin_for_unit (0050) calls
+--   create_authorization_with_credential (0027). Both are SECURITY
+--   DEFINER. Neither depends on this policy. Resident-facing guest PIN
+--   creation continues to work.
+--
+-- Kept unchanged:
+--   - authorizations_insert_admin — admins are trusted at the tenant
+--     boundary; the INSERT policy is unaffected.
+--   - authorizations_update_admin — admin-side updates unchanged.
+--   - authorizations_select_primary_resident and
+--     authorizations_select_household_member — SELECT policies unchanged.
+--     The guest PIN list RPC (0051) reads via SECURITY DEFINER and does
+--     not depend on the SELECT policies.
+--
+-- Rollback (for reference only; project migrations are forward-only):
+--   create policy authorizations_insert_primary_resident
+--     on public.authorizations
+--     for insert
+--     with check (
+--       scope_unit_id is not null
+--       and scope_unit_id = public.current_occupied_unit_id(organization_id)
+--       and public.is_org_operational(organization_id)
+--     );
+--
+-- Related:
+--   Migration 0053 dropped authorizations_update_primary_resident for the
+--   same structural reason (row-scoped, not column-scoped).
+--   Known-issues #16 tracks this fix.
+-- ============================================================================
+
+drop policy if exists authorizations_insert_primary_resident
+  on public.authorizations;
