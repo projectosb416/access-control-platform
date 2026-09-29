@@ -48,7 +48,7 @@ This discipline has caught four production-class bugs so far. Do not skip.
    visible output. Never guess the fix.
 9. **Trace through behavior before calling something a bug.** False alarms
    waste cycles.
-10. **Nothing stages until lint + typecheck + build pass locally.**
+10. **Nothing stages until lint + typecheck + test + build pass locally.** CI's verify job runs all four; local runs must match. Note: `npm test` runs vitest in watch mode on an interactive terminal — use `npm test -- --run` (or `npm run test:run`) to exit after one pass.
 
 ### Secrets discipline
 - **Never paste a secret into chat.** Not even partial. Rotate if it happens.
