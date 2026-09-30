@@ -59,3 +59,27 @@ export type UnitVisit = {
   status: 'open' | 'completed' | 'unresolved'
   resolved_at: string | null
 }
+
+/**
+ * Mirrors the row shape returned from public.notifications (migration
+ * 0015). Only the fields the resident dashboard actually renders —
+ * further columns exist (access_event_id, gate_id, group_key, etc.)
+ * and can be added here when a feature needs them.
+ *
+ * read_at = null means unread. The table's RLS policy
+ * notifications_select_self already filters to the current account,
+ * so no SECURITY DEFINER wrapper is required for reads.
+ *
+ * category and priority are enum-constrained on the table:
+ *   category:  access | security | operations | system | billing
+ *   priority:  information | attention | high
+ */
+export type Notification = {
+  id: string
+  category: 'access' | 'security' | 'operations' | 'system' | 'billing'
+  priority: 'information' | 'attention' | 'high'
+  title: string
+  body: string | null
+  read_at: string | null
+  created_at: string
+}

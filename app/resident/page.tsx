@@ -4,7 +4,8 @@ import { createClient } from '@/lib/supabase/server'
 import { LogoutButton } from './logout-button'
 import { GuestPinSection } from './guest-pin-section'
 import { RecentVisitsSection } from './recent-visits-section'
-import type { GuestPin, UnitVisit } from './types'
+import { NotificationsSection } from './notifications-section'
+import type { GuestPin, UnitVisit, Notification } from './types'
 
 /**
  * /resident — resident dashboard.
@@ -129,6 +130,19 @@ export default async function ResidentHomePage() {
     visits = (rows ?? []) as UnitVisit[]
   }
 
+  // Step 6: notifications for this account. Direct table read — RLS
+  // policy notifications_select_self scopes to the caller. Newest
+  // first, capped at 10 by the component. Non-fatal on error.
+  let notifications: Notification[] = []
+  {
+    const { data: rows } = await supabase
+      .from('notifications')
+      .select('id, category, priority, title, body, read_at, created_at')
+      .order('created_at', { ascending: false })
+      .limit(10)
+    notifications = (rows ?? []) as Notification[]
+  }
+
   // Timestamp is computed once per request and passed to the client so
   // server and client render identical expiry labels.
   const nowIso = new Date().toISOString()
@@ -163,6 +177,10 @@ export default async function ResidentHomePage() {
             nowIso={nowIso}
           />
           <RecentVisitsSection visits={visits} nowIso={nowIso} />
+          <NotificationsSection
+            notifications={notifications}
+            nowIso={nowIso}
+          />
         </>
       ) : (
         <section className="bg-muted/40 rounded-lg border p-5">
