@@ -3,8 +3,7 @@ import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
 import { LogoutButton } from './logout-button'
 import { GuestPinSection } from './guest-pin-section'
-import { RecentVisitsSection } from './recent-visits-section'
-import type { GuestPin, UnitVisit } from './types'
+import type { GuestPin } from './types'
 
 /**
  * /resident — resident dashboard.
@@ -117,16 +116,6 @@ export default async function ResidentHomePage() {
     guestPins = (pins ?? []) as GuestPin[]
   }
 
-
-  // Step 5: recent visits for this unit.
-  let visits: UnitVisit[] = []
-  if (unit?.id) {
-    const { data: visitsData } = await supabase.rpc('list_unit_visits', {
-      p_unit_id: unit.id,
-    })
-    visits = (visitsData ?? []) as UnitVisit[]
-  }
-
   // Timestamp is computed once per request and passed to the client so
   // server and client render identical expiry labels.
   const nowIso = new Date().toISOString()
@@ -151,17 +140,14 @@ export default async function ResidentHomePage() {
       </header>
 
       {unit?.id ? (
-        <>
-          <GuestPinSection
-            unitId={unit.id}
-            estateName={property?.name ?? 'Your estate'}
-            unitLabel={unit.label}
-            residentName={person.full_name}
-            initialPins={guestPins}
-            nowIso={nowIso}
-          />
-          <RecentVisitsSection visits={visits} />
-        </>
+        <GuestPinSection
+          unitId={unit.id}
+          estateName={property?.name ?? 'Your estate'}
+          unitLabel={unit.label}
+          residentName={person.full_name}
+          initialPins={guestPins}
+          nowIso={nowIso}
+        />
       ) : (
         <section className="bg-muted/40 rounded-lg border p-5">
           <h2 className="text-base font-medium">No unit yet</h2>

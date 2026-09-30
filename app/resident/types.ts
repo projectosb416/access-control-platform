@@ -41,11 +41,3 @@ export type GenerateGuestPinResponse = {
   credential_id: string
   pin: string
 }
-
-export interface UnitVisit {
-  session_id: string
-  visitor_name: string
-  entered_at: string
-  exited_at: string | null
-  status: 'open' | 'completed' | 'unresolved'
-}
