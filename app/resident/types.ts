@@ -41,3 +41,21 @@ export type GenerateGuestPinResponse = {
   credential_id: string
   pin: string
 }
+
+/**
+ * Mirrors the row shape returned by list_unit_visits (migration 0056).
+ * Field names match the RPC exactly — no mapping needed when passing
+ * data from the Server Component to the client.
+ *
+ * status is one of: 'open' | 'completed' | 'unresolved' (per
+ * access_sessions_status_check). resolved_at is non-null only when an
+ * unresolved session has since been resolved by admin.
+ */
+export type UnitVisit = {
+  session_id: string
+  visitor_name: string
+  entered_at: string
+  exited_at: string | null
+  status: 'open' | 'completed' | 'unresolved'
+  resolved_at: string | null
+}

@@ -3,7 +3,8 @@ import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
 import { LogoutButton } from './logout-button'
 import { GuestPinSection } from './guest-pin-section'
-import type { GuestPin } from './types'
+import { RecentVisitsSection } from './recent-visits-section'
+import type { GuestPin, UnitVisit } from './types'
 
 /**
  * /resident — resident dashboard.
@@ -116,6 +117,18 @@ export default async function ResidentHomePage() {
     guestPins = (pins ?? []) as GuestPin[]
   }
 
+  // Step 5: recent visits to this unit. Same residency check inside the
+  // RPC — non-residents get NOT_AUTHORIZED, unknown units get
+  // UNIT_NOT_FOUND. Errors here are non-fatal: an empty list is the
+  // graceful fallback so a backend hiccup doesn't blank the whole page.
+  let visits: UnitVisit[] = []
+  if (unit?.id) {
+    const { data: rows } = await supabase.rpc('list_unit_visits', {
+      p_unit_id: unit.id,
+    })
+    visits = (rows ?? []) as UnitVisit[]
+  }
+
   // Timestamp is computed once per request and passed to the client so
   // server and client render identical expiry labels.
   const nowIso = new Date().toISOString()
@@ -140,14 +153,17 @@ export default async function ResidentHomePage() {
       </header>
 
       {unit?.id ? (
-        <GuestPinSection
-          unitId={unit.id}
-          estateName={property?.name ?? 'Your estate'}
-          unitLabel={unit.label}
-          residentName={person.full_name}
-          initialPins={guestPins}
-          nowIso={nowIso}
-        />
+        <>
+          <GuestPinSection
+            unitId={unit.id}
+            estateName={property?.name ?? 'Your estate'}
+            unitLabel={unit.label}
+            residentName={person.full_name}
+            initialPins={guestPins}
+            nowIso={nowIso}
+          />
+          <RecentVisitsSection visits={visits} nowIso={nowIso} />
+        </>
       ) : (
         <section className="bg-muted/40 rounded-lg border p-5">
           <h2 className="text-base font-medium">No unit yet</h2>
