@@ -305,7 +305,7 @@ function AttentionBanner({ staleCount }: { staleCount: number }) {
   return (
     <section className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-4">
       <p className="text-sm font-medium text-amber-900 dark:text-amber-200">
-        {staleCount} session{staleCount === 1 ? '' : 's'} need attention
+        {staleCount} session{staleCount === 1 ? ' needs' : 's need'} attention
       </p>
       <p className="mt-0.5 text-xs text-amber-900/80 dark:text-amber-200/80">
         Visitors entered more than {STALE_SESSION_HOURS} hours ago and no exit

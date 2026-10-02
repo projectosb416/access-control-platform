@@ -125,7 +125,7 @@ export default async function AdminHomePage() {
       {showAttention ? (
         <section className="mb-4 rounded-lg border border-amber-500/30 bg-amber-500/10 p-5">
           <h2 className="text-base font-medium text-amber-900 dark:text-amber-200">
-            {staleCount} session{staleCount === 1 ? '' : 's'} need attention
+            {staleCount} session{staleCount === 1 ? ' needs' : 's need'} attention
           </h2>
           <p className="mt-1 text-sm text-amber-900/80 dark:text-amber-200/80">
             Visitors entered more than {STALE_SESSION_HOURS} hours ago and no
