@@ -580,3 +580,94 @@ watch mode on an interactive terminal and must be invoked as
 to CI. A local-only test regression still gates at CI, but consumes a
 CI cycle that could have been avoided.
 
+---
+
+## Issue 19 — Household members get NOT_AUTHORIZED on read RPCs
+
+**Severity:** Low
+**Area:** Product / UX
+**Found:** 2026-10-02 during 4c (household section) close-out
+
+**Symptom:** A household member who redeems an invite and logs in
+reaches the resident dashboard, but three read RPCs reject them:
+
+- `list_guest_pins_for_unit` (0051)
+- `list_unit_visits` (0056)
+- `list_household_members` (0057)
+
+All three check `is_primary_resident_of_unit` via an active
+occupancy row. Household members have no occupancy — their membership
+lives in `household_members`. Result: each RPC raises NOT_AUTHORIZED;
+the page catches non-fatally and renders empty sections.
+
+**Why it matters:** household members are authenticated principals
+(they log in, they have accounts). Seeing an empty dashboard for their
+own unit is confusing, and the sections that should be most useful to
+them (household roster, visits to the shared unit) are the ones that
+fail.
+
+**Current workaround:** none. The dashboard shell renders cleanly; the
+content is empty. No security exposure — the RPCs are correctly
+refusing access, they just don't yet have the household-member path.
+
+**Permanent fix — extend three RPCs:**
+
+- `list_unit_visits` — permit household-member read of the unit's
+  visits. They co-occupy; the information is theirs to see.
+- `list_household_members` — permit household-member read of the
+  roster they belong to.
+- `list_guest_pins_for_unit` — permit household-member read filtered
+  to `created_by = current_account_id()`. Mirrors the existing RLS
+  policy `authorizations_select_household_member` which already scopes
+  this way.
+
+Each RPC's residency predicate changes from "active occupancy exists"
+to "active occupancy exists OR active household_members row exists",
+with the guest-PIN case adding the created_by filter.
+
+**Target phase:** next resident-adjacent slice. Small — three
+migration-wrapped function replacements, one pgTAP addition.
+
+**Impact if not fixed:** household membership works for the primary
+resident (invite, list, remove) but household members themselves
+experience a hollow dashboard. Feature is half-built from their
+perspective.
+
+---
+
+## Issue 20 — generate_unit_invite does not cross-check household_members for hash collisions
+
+**Severity:** Low
+**Area:** Data integrity
+**Found:** 2026-10-02 during 4c review
+
+**Symptom:** `generate_unit_invite` (migration 0045) checks new invite
+codes for collisions against `occupancies.invite_code_hash` only.
+`generate_household_invite` (migration 0057) checks against both
+`household_members` and `occupancies`. The unit-invite path is
+asymmetric — it could theoretically emit a code that already exists as
+a live household invite.
+
+**Why it matters:** the alphabet is 31 chars over 8 positions
+(~852 billion), so the collision probability is negligible. But the
+two invite generation paths should be structurally identical, and
+right now one checks two tables while the other checks one.
+
+**Current workaround:** none. No observed collisions.
+
+**Permanent fix:** `create or replace function
+public.generate_unit_invite(...)` — same body as 0045, with the
+collision check widened to a `union all` across
+`household_members.invite_code_hash` and
+`occupancies.invite_code_hash`. Same shape as 0057's generator.
+Single migration, ~5 lines changed.
+
+**Target phase:** any upcoming DB cleanup. Small.
+
+**Impact if not fixed:** structurally asymmetric — not a live bug.
+Resolving it removes a class of "why do these two functions differ"
+questions from future review.
+
+---
+
+
