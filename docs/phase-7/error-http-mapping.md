@@ -49,6 +49,7 @@ Postgres error string to a client.
 | `INVALID_LOCKOUT_SECONDS` | 400 | `< 0` |
 | `INVALID_BUCKET_SECONDS` | 400 | `<= 0` or `> window` |
 | `PURPOSE_REQUIRED` | 400 | Blank purpose |
+| `INVALID_DURATION` | 400 | Invite duration null, <= 0, or > cap |
 | `REASON_REQUIRED` | 400 | Blank reason for resolve/mark |
 | `ORG_NAME_REQUIRED` | 400 | Blank org name in setup |
 | `ADMIN_NAME_REQUIRED` | 400 | Blank admin name in setup |
@@ -70,6 +71,8 @@ Postgres error string to a client.
 | `PLAN_NOT_AVAILABLE` | 404 | Plan exists but is not active |
 | `UNIT_NOT_FOUND` | 404 | Unit UUID does not exist |
 | `AUTHORIZATION_NOT_FOUND` | 404 | Guest PIN authorization not found |
+| `INVITE_NOT_FOUND` | 404 | No live invite for this unit |
+| `HOUSEHOLD_MEMBER_NOT_FOUND` | 404 | Household member UUID does not exist |
 
 ### Conflict — state prevents the action
 
@@ -92,6 +95,9 @@ Postgres error string to a client.
 | `UNIT_NOT_IN_ORG` | 409 | |
 | `UNIT_NOT_ACTIVE` | 409 | |
 | `NOT_REVOKABLE` | 409 | Authorization is completed or expired |
+| `INVITE_INVALID_OR_EXPIRED` | 409 | Invite code unknown, used, or expired |
+| `ALREADY_HOUSEHOLD_MEMBER` | 409 | Caller is already an active member of this unit |
+| `HOUSEHOLD_MEMBER_NOT_ACTIVE` | 409 | Member is invited or ended, not active |
 | `APPOINTMENT_NOT_IN_ORG` | 409 | |
 | `HOST_NOT_IN_ORG` | 409 | |
 
@@ -100,6 +106,7 @@ Postgres error string to a client.
 | Error code | HTTP | Meaning |
 |---|---|---|
 | `SYSTEM_UNAVAILABLE` | 500 | Unhandled exception, or database unavailable |
+| `CODE_GENERATION_FAILED` | 500 | Invite code generation exhausted retries |
 | (anything else) | 500 | Catch-all. Log full detail server-side. Return `SYSTEM_UNAVAILABLE` to client. |
 
 ## Access engine result codes (NOT HTTP errors)
