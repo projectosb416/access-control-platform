@@ -83,3 +83,25 @@ export type Notification = {
   read_at: string | null
   created_at: string
 }
+
+/**
+ * Mirrors the row shape returned by list_household_members (migration
+ * 0057). Field names match the RPC exactly — no mapping needed when
+ * passing data from the Server Component to the client.
+ *
+ * status is one of: 'invited' | 'active' | 'ended'
+ * (per household_members_status_check).
+ *
+ * full_name is null for invited rows (no person_id yet).
+ * ended_at and end_reason are populated only when status = 'ended'.
+ */
+export type HouseholdMember = {
+  household_member_id: string
+  full_name: string | null
+  status: 'invited' | 'active' | 'ended'
+  invited_at: string
+  joined_at: string | null
+  ended_at: string | null
+  end_reason: string | null
+  invite_expires_at: string | null
+}

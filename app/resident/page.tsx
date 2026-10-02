@@ -5,7 +5,8 @@ import { LogoutButton } from './logout-button'
 import { GuestPinSection } from './guest-pin-section'
 import { RecentVisitsSection } from './recent-visits-section'
 import { NotificationsSection } from './notifications-section'
-import type { GuestPin, UnitVisit, Notification } from './types'
+import { HouseholdSection } from './household-section'
+import type { GuestPin, UnitVisit, Notification, HouseholdMember } from './types'
 
 /**
  * /resident — resident dashboard.
@@ -143,6 +144,18 @@ export default async function ResidentHomePage() {
     notifications = (rows ?? []) as Notification[]
   }
 
+  // Step 7: household members for this unit. Server fetch through the
+  // RPC because people RLS blocks the primary resident from seeing
+  // other accounts' person rows (same reason as list_guest_pins).
+  // Non-fatal on error.
+  let householdMembers: HouseholdMember[] = []
+  if (unit?.id) {
+    const { data: rows } = await supabase.rpc('list_household_members', {
+      p_unit_id: unit.id,
+    })
+    householdMembers = (rows ?? []) as HouseholdMember[]
+  }
+
   // Timestamp is computed once per request and passed to the client so
   // server and client render identical expiry labels.
   const nowIso = new Date().toISOString()
@@ -174,6 +187,13 @@ export default async function ResidentHomePage() {
             unitLabel={unit.label}
             residentName={person.full_name}
             initialPins={guestPins}
+            nowIso={nowIso}
+          />
+          <HouseholdSection
+            unitId={unit.id}
+            estateName={property?.name ?? 'Your estate'}
+            unitLabel={unit.label}
+            initialMembers={householdMembers}
             nowIso={nowIso}
           />
           <RecentVisitsSection visits={visits} nowIso={nowIso} />
