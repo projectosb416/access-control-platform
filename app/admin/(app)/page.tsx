@@ -3,6 +3,7 @@ import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { LogoutButton } from './logout-button'
 import { CommandCenter } from './command-center'
+import { CommandCenterLive } from './command-center-live'
 import { STALE_SESSION_HOURS } from '@/lib/admin/sessions'
 
 /**
@@ -70,7 +71,9 @@ export default async function AdminHomePage() {
           <LogoutButton />
         </header>
 
-        <CommandCenter organizationId={organizationId} />
+        <CommandCenterLive organizationId={organizationId}>
+          <CommandCenter organizationId={organizationId} />
+        </CommandCenterLive>
       </div>
     )
   }
