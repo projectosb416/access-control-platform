@@ -11,6 +11,7 @@ import {
   Activity,
   Building2,
   MapPin,
+  CreditCard,
   MoreHorizontal,
   X,
 } from 'lucide-react'
@@ -46,6 +47,7 @@ const SECONDARY: NavItem[] = [
   { href: '/admin/units', label: 'Units', icon: Building2 },
   { href: '/admin/properties', label: 'Properties', icon: MapPin },
   { href: '/admin/activity', label: 'Activity', icon: Activity },
+  { href: '/admin/billing', label: 'Billing', icon: CreditCard },
 ]
 
 function isActive(pathname: string, href: string): boolean {
