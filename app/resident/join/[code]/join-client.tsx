@@ -19,8 +19,11 @@ import type { InviteContext } from './page'
  *             (no auto sign-in), advance to login.
  *   login   — no session, account exists. Email + password. On submit:
  *             signInWithPassword, advance to confirm.
- *   confirm — session active. One button: Join [property]. On submit:
- *             redeem_unit_invite RPC → redirect to /resident.
+ *   confirm — session active. One button. On submit: dispatch to the
+ *             correct RPC based on context.inviteType — redeem_unit_invite
+ *             (creates an occupancy + primary_resident membership) or
+ *             redeem_household_invite (links the caller to the unit as a
+ *             co-occupant; no occupancy row). Then redirect to /resident.
  *
  * If `context.status !== 'valid'`, the form is not shown at all — a status
  * panel replaces it.
@@ -111,13 +114,10 @@ export function JoinClient({
         return
       }
 
-      // Per design: do not auto sign-in. Sign out immediately if a session
-      // was established by signUp.
       if (data.session) {
         await supabase.auth.signOut()
       }
 
-      // Pre-fill the login form with what they just created.
       setLoginEmail(trimmedEmail)
       setLoginPassword('')
       setStage('login')
@@ -169,7 +169,16 @@ export function JoinClient({
 
     try {
       const supabase = createClient()
-      const { error: rpcError } = await supabase.rpc('redeem_unit_invite', {
+
+      // Dispatch by invite type.
+      //   unit      — creates occupancy + primary_resident membership
+      //   household — links account to unit as a household member
+      const rpcName =
+        context.inviteType === 'household'
+          ? 'redeem_household_invite'
+          : 'redeem_unit_invite'
+
+      const { error: rpcError } = await supabase.rpc(rpcName, {
         p_code_hash: context.hash,
       })
 
@@ -188,6 +197,7 @@ export function JoinClient({
 
   const propertyLabel = context.propertyName ?? 'the estate'
   const unitSuffix = context.unitLabel ? ` · Unit ${context.unitLabel}` : ''
+  const isHousehold = context.inviteType === 'household'
 
   return (
     <main className="mx-auto flex w-full max-w-md flex-1 flex-col justify-center px-6 py-10">
@@ -254,7 +264,9 @@ export function JoinClient({
           <div className="grid gap-2">
             <Label htmlFor="phone">
               Phone{' '}
-              <span className="text-muted-foreground font-normal">(optional)</span>
+              <span className="text-muted-foreground font-normal">
+                (optional)
+              </span>
             </Label>
             <Input
               id="phone"
@@ -275,7 +287,11 @@ export function JoinClient({
             </p>
           ) : null}
 
-          <Button type="submit" disabled={submitting} className="mt-2 h-11 w-full">
+          <Button
+            type="submit"
+            disabled={submitting}
+            className="mt-2 h-11 w-full"
+          >
             {submitting ? 'Creating account…' : 'Create account'}
           </Button>
         </form>
@@ -323,7 +339,11 @@ export function JoinClient({
             </p>
           ) : null}
 
-          <Button type="submit" disabled={submitting} className="mt-2 h-11 w-full">
+          <Button
+            type="submit"
+            disabled={submitting}
+            className="mt-2 h-11 w-full"
+          >
             {submitting ? 'Logging in…' : 'Log in'}
           </Button>
         </form>
@@ -332,8 +352,10 @@ export function JoinClient({
       {stage === 'confirm' ? (
         <div className="flex flex-col gap-4">
           <p className="text-muted-foreground text-sm">
-            You&apos;re signed in as <strong>{signedInEmail}</strong>. Tap below
-            to confirm your place as Primary Resident of {propertyLabel}
+            You&apos;re signed in as <strong>{signedInEmail}</strong>. Tap
+            below to confirm your place as{' '}
+            {isHousehold ? 'a household member' : 'Primary Resident'} of{' '}
+            {propertyLabel}
             {context.unitLabel ? ` · ${context.unitLabel}` : ''}.
           </p>
 
@@ -348,7 +370,7 @@ export function JoinClient({
 
           <Button
             type="button"
-            onClick={handleConfirm}
+            onClick={() => void handleConfirm()}
             disabled={submitting}
             className="h-11 w-full"
           >
@@ -376,11 +398,11 @@ function InviteStatusPanel({ context }: { context: InviteContext }) {
   if (context.status === 'expired') {
     title = 'This invite has expired'
     body =
-      'Invite links are valid for 24 hours. Ask the admin who sent it to generate a new one.'
+      'Invite links are valid for 24 hours. Ask whoever sent it to generate a new one.'
   } else {
     title = 'This invite is not valid'
     body =
-      'The code may be wrong or already used. Ask the admin to send a new invite link.'
+      'The code may be wrong or already used. Ask for a new invite link.'
   }
 
   return (
@@ -433,13 +455,19 @@ function mapRedeemError(message: string): string {
     return 'Your session expired. Please log in again.'
   }
   if (message.includes('INVITE_INVALID_OR_EXPIRED')) {
-    return 'This invite is no longer valid. Ask your admin for a new link.'
+    return 'This invite is no longer valid. Ask for a new link.'
   }
   if (message.includes('UNIT_ALREADY_OCCUPIED')) {
     return 'This unit already has a resident. Contact your admin.'
   }
   if (message.includes('ALREADY_PRIMARY_RESIDENT')) {
     return 'You’re already the Primary Resident of a unit in this estate.'
+  }
+  if (message.includes('ALREADY_HOUSEHOLD_MEMBER')) {
+    return 'You are already a household member of this unit.'
+  }
+  if (message.includes('SUBSCRIPTION_INACTIVE')) {
+    return 'This estate’s subscription is inactive. Contact your admin.'
   }
   return 'Could not complete the redemption. Please try again.'
 }

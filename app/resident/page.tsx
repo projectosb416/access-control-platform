@@ -106,8 +106,35 @@ export default async function ResidentHomePage() {
       | { id: string; label: string; properties: { name: string } | { name: string }[] }[]
   } | null
 
-  const unit = occ ? unwrap(occ.units) : null
-  const property = unit ? unwrap(unit.properties) : null
+  let unit = occ ? unwrap(occ.units) : null
+  let property = unit ? unwrap(unit.properties) : null
+
+  // Step 3b: household-member fallback. A household invite does not
+  // create an occupancy row, so a household member has no match in the
+  // query above. Resolve their unit through household_members instead.
+  // Direct read — household_members_select RLS permits reading rows
+  // where account_id = current_account_id().
+  if (!unit && accountId) {
+    const { data: hhRow } = await supabase
+      .from('household_members')
+      .select('units!inner(id, label, properties!inner(name))')
+      .eq('account_id', accountId)
+      .eq('status', 'active')
+      .limit(1)
+      .maybeSingle()
+
+    if (hhRow) {
+      const hhUnits = (hhRow as unknown as {
+        units:
+          | { id: string; label: string; properties: { name: string } | { name: string }[] }
+          | { id: string; label: string; properties: { name: string } | { name: string }[] }[]
+      }).units
+
+      const hhUnit = unwrap(hhUnits)
+      unit = hhUnit
+      property = hhUnit ? unwrap(hhUnit.properties) : null
+    }
+  }
 
   // Step 4: guest PINs for this unit. Server fetch through the RPC because
   // visitor person rows are not visible to residents under people RLS.
