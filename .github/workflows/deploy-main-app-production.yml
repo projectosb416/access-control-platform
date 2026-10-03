@@ -1,0 +1,89 @@
+name: Deploy main app to production
+
+# Manually triggered only. Nothing in this file fires automatically.
+# Production-affecting paths stay out of ci.yml so an automatic push
+# to main cannot deploy to production.
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirmation:
+        description: 'Type "deploy-to-production" to confirm'
+        required: true
+        type: string
+
+jobs:
+  check-confirmation:
+    name: Verify confirmation string
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check input
+        if: ${{ inputs.confirmation != 'deploy-to-production' }}
+        run: |
+          echo "Confirmation string did not match."
+          echo "Expected: deploy-to-production"
+          echo "Received: ${{ inputs.confirmation }}"
+          exit 1
+
+  deploy-production:
+    name: Build and deploy production Worker
+    runs-on: ubuntu-latest
+    needs: check-confirmation
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - run: npm ci
+
+      - name: Install Cloudflare tooling
+        run: npm install --no-save --legacy-peer-deps @opennextjs/cloudflare@1.20.6 wrangler@4.134.0 esbuild@0.25.4
+
+      # NEXT_PUBLIC_* are baked into the bundle at build time. This is
+      # why a separate workflow is needed — the staging deploy-main-app
+      # job bakes staging's URL, and this job bakes production's.
+      - name: Build Worker (production)
+        run: npm run build:worker
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.PRODUCTION_SUPABASE_URL }}
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.PRODUCTION_SUPABASE_ANON_KEY }}
+
+      # PREREQUISITES before first run of this workflow:
+      #   1. secrets.PRODUCTION_PIN_PEPPER must exist in GitHub secrets.
+      #      It is NOT in the current 16-secret set. Generate the pepper
+      #      out-of-band (Bitwarden + physical backup), then add it as
+      #      a repo secret. Do not run this workflow until that is done —
+      #      the secret is referenced below and will fail loudly if absent.
+      #   2. Sentry environment tag change must have shipped — the
+      #      Sentry init reads SENTRY_ENVIRONMENT and defaults to
+      #      "staging". This workflow does not set SENTRY_ENVIRONMENT,
+      #      so production errors would be tagged as staging until
+      #      that code change lands. Follow-up commit, tracked separately.
+      - name: Set production Worker secrets
+        run: |
+          printf '%s' "${{ secrets.PRODUCTION_SUPABASE_SERVICE_ROLE_KEY }}" | npx wrangler secret put SUPABASE_SERVICE_ROLE_KEY
+          printf '%s' "${{ secrets.PRODUCTION_PIN_PEPPER }}" | npx wrangler secret put PIN_PEPPER
+          printf '%s' "${{ secrets.SENTRY_DSN }}" | npx wrangler secret put SENTRY_DSN
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          WRANGLER_CONFIG: wrangler.production.jsonc
+
+      - name: Deploy to Cloudflare
+        run: npx wrangler deploy
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          WRANGLER_CONFIG: wrangler.production.jsonc
+
+  smoke-test-production:
+    name: Smoke test production Worker
+    runs-on: ubuntu-latest
+    needs: deploy-production
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run smoke test
+        run: bash scripts/smoke-test-deployed.sh https://access-control-platform-production.projectosb416.workers.dev

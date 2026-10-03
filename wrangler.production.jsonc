@@ -1,0 +1,27 @@
+{
+  // Production Worker config.
+  //
+  // Differs from wrangler.jsonc only in `name` — this deploys as a
+  // separate Cloudflare Worker (access-control-platform-production)
+  // rather than an environment on the staging Worker. URL-level
+  // isolation so a deploy targeted at the wrong environment cannot
+  // silently talk to the wrong Supabase project.
+  //
+  // Worker secrets (SUPABASE_SERVICE_ROLE_KEY, PIN_PEPPER, SENTRY_DSN)
+  // are set by .github/workflows/deploy-main-app-production.yml, using
+  // the PRODUCTION_* GitHub secrets.
+  //
+  // NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY are
+  // baked into the Worker bundle at build time (see the workflow's
+  // build step). They are not set via wrangler secret put.
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "access-control-platform-production",
+  "main": "sentry-worker.ts",
+  "compatibility_date": "2025-08-16",
+  "compatibility_flags": ["nodejs_compat", "global_fetch_strictly_public"],
+  "assets": {
+    "directory": ".open-next/assets",
+    "binding": "ASSETS"
+  },
+  "upload_source_maps": true
+}
