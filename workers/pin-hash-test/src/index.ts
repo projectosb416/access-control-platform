@@ -160,7 +160,7 @@ async function handle(request: Request, env: Env): Promise<Response> {
   return json({ error: 'not found' }, 404)
 }
 
-export default {
+const worker = {
   async fetch(request: Request, env: Env): Promise<Response> {
     try {
       return await handle(request, env)
@@ -178,3 +178,4 @@ export default {
     }
   },
 }
+export default worker

@@ -22,7 +22,6 @@ import { withSentryRoute } from '@/lib/sentry/route-wrapper'
 
 export const runtime = 'nodejs'
 
-const PIN_LENGTH = 6
 const PIN_REGEX = /^[0-9]{6}$/
 const MAX_IDEMPOTENCY_KEY_LENGTH = 200
 
