@@ -64,20 +64,18 @@ jobs:
       #      that code change lands. Follow-up commit, tracked separately.
       - name: Set production Worker secrets
         run: |
-          printf '%s' "${{ secrets.PRODUCTION_SUPABASE_SERVICE_ROLE_KEY }}" | npx wrangler secret put SUPABASE_SERVICE_ROLE_KEY
-          printf '%s' "${{ secrets.PRODUCTION_PIN_PEPPER }}" | npx wrangler secret put PIN_PEPPER
-          printf '%s' "${{ secrets.SENTRY_DSN }}" | npx wrangler secret put SENTRY_DSN
+          printf '%s' "${{ secrets.PRODUCTION_SUPABASE_SERVICE_ROLE_KEY }}" | npx wrangler secret put SUPABASE_SERVICE_ROLE_KEY --config wrangler.production.jsonc
+          printf '%s' "${{ secrets.PRODUCTION_PIN_PEPPER }}" | npx wrangler secret put PIN_PEPPER --config wrangler.production.jsonc
+          printf '%s' "${{ secrets.SENTRY_DSN }}" | npx wrangler secret put SENTRY_DSN --config wrangler.production.jsonc
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          WRANGLER_CONFIG: wrangler.production.jsonc
 
       - name: Deploy to Cloudflare
-        run: npx wrangler deploy
+        run: npx wrangler deploy --config wrangler.production.jsonc
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          WRANGLER_CONFIG: wrangler.production.jsonc
 
   smoke-test-production:
     name: Smoke test production Worker
