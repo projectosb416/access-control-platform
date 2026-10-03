@@ -48,13 +48,47 @@ const securityHeaders = [
   { key: 'Cross-Origin-Opener-Policy', value: 'same-origin' },
 ]
 
+/**
+ * Content-Security-Policy in report-only mode.
+ *
+ * Report-only means: browsers log violations to /api/csp-report but
+ * do not block anything. We observe for a window, tune the policy
+ * against real violations, then promote to enforcing CSP (A2c).
+ *
+ * Two directives carry deliberate looseness for observation:
+ *   'unsafe-inline' on script-src — Next.js uses inline scripts for
+ *     hydration bootstrap. The correct long-term fix is nonces, which
+ *     require proxy/middleware changes. Observation first, nonces in
+ *     a later step.
+ *   'unsafe-inline' on style-src — Next.js inlines critical CSS.
+ *
+ * Everything else starts conservative so violations surface real
+ * issues rather than noise we've pre-emptively silenced.
+ */
+const cspReportOnly = [
+  "default-src 'self'",
+  "script-src 'self' 'unsafe-inline'",
+  "style-src 'self' 'unsafe-inline'",
+  "img-src 'self' data: blob:",
+  "font-src 'self' data:",
+  "connect-src 'self' https://*.supabase.co wss://*.supabase.co https://*.sentry.io https://*.ingest.sentry.io",
+  "frame-ancestors 'none'",
+  "base-uri 'self'",
+  "form-action 'self'",
+  "object-src 'none'",
+  'report-uri /api/csp-report',
+].join('; ')
+
 const nextConfig: NextConfig = {
   async headers() {
     return [
       {
         // Apply to all routes, including API and static.
         source: '/(.*)',
-        headers: securityHeaders,
+        headers: [
+          ...securityHeaders,
+          { key: 'Content-Security-Policy-Report-Only', value: cspReportOnly },
+        ],
       },
     ]
   },
