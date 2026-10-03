@@ -17,6 +17,14 @@
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "access-control-platform-production",
   "main": "sentry-worker.ts",
+  // Non-secret runtime bindings. Read as env.<NAME> in sentry-worker.ts.
+  // SENTRY_ENVIRONMENT tags every event so production errors do not
+  // interleave with staging in the shared Sentry project. The staging
+  // Worker omits this binding and falls back to the code default
+  // ('staging') — see sentry-worker.ts.
+  "vars": {
+    "SENTRY_ENVIRONMENT": "production"
+  },
   "compatibility_date": "2025-08-16",
   "compatibility_flags": ["nodejs_compat", "global_fetch_strictly_public"],
   "assets": {

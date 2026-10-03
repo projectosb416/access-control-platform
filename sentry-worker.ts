@@ -19,6 +19,7 @@ import openNextWorker from './.open-next/worker.js'
 
 interface Env {
   SENTRY_DSN?: string
+  SENTRY_ENVIRONMENT?: string
 }
 
 // Case-insensitive patterns. If a key matches any pattern, its value is
@@ -84,6 +85,13 @@ export default Sentry.withSentry(
     if (!env.SENTRY_DSN) return undefined
     return {
       dsn: env.SENTRY_DSN,
+      // Defaults to 'staging' when the binding is not set. The staging
+      // Worker relies on this default (no secret set). The production
+      // Worker sets SENTRY_ENVIRONMENT=production via
+      // .github/workflows/deploy-main-app-production.yml. If a future
+      // Worker is deployed without the binding, errors will tag as
+      // staging — verify the secret is set before assuming otherwise.
+      environment: env.SENTRY_ENVIRONMENT ?? 'staging',
       tracesSampleRate: 0.1,
       // Belt-and-braces: disable Sentry's default PII capture. Our beforeSend
       // handles the specific cases, but this turns off a whole class of
