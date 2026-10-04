@@ -4,11 +4,11 @@ import { LogoutButton } from './logout-button'
 /**
  * Platform owner nav.
  *
- * Deliberately minimal for v1 — a header bar, not a sidebar. Only one
- * page exists (the dashboard); a sidebar would be empty chrome. When
- * more platform surfaces ship (per-org drill-down, revenue reports,
- * etc.), this evolves into the same sidebar/bottom-bar pattern the
- * admin surface uses.
+ * Deliberately minimal for v1 — a header bar, not a sidebar. Two
+ * destinations now (Dashboard, Audit) plus sign out. When more
+ * platform surfaces ship (per-org drill-down, revenue reports, etc.),
+ * this evolves into the same sidebar/bottom-bar pattern the admin
+ * surface uses, and gains active-state highlighting.
  */
 
 export function PlatformNav() {
@@ -24,7 +24,15 @@ export function PlatformNav() {
             Platform
           </span>
         </Link>
-        <LogoutButton />
+        <nav className="flex items-center gap-4">
+          <Link
+            href="/platform/audit"
+            className="text-muted-foreground hover:text-foreground text-sm font-medium transition-colors"
+          >
+            Audit
+          </Link>
+          <LogoutButton />
+        </nav>
       </div>
     </header>
   )
