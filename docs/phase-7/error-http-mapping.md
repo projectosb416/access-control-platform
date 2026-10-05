@@ -60,6 +60,7 @@ Postgres error string to a client.
 | `LOCKOUT_SECONDS_MUST_BE_POSITIVE` | 400 | `<= 0` |
 | `INVALID_REFUND_AMOUNT` | 400 | Refund amount is null or <= 0 |
 | `REFUND_EXCEEDS_REMAINING` | 400 | Total refunds would exceed the original amount |
+| `LABEL_REQUIRED` | 400 | Destination label is null or blank |
 
 ### Not found
 
@@ -75,6 +76,7 @@ Postgres error string to a client.
 | `AUTHORIZATION_NOT_FOUND` | 404 | Guest PIN authorization not found |
 | `INVITE_NOT_FOUND` | 404 | No live invite for this unit |
 | `HOUSEHOLD_MEMBER_NOT_FOUND` | 404 | Household member UUID does not exist |
+| `DESTINATION_NOT_FOUND` | 404 | Payment destination UUID does not exist |
 
 ### Conflict — state prevents the action
 
@@ -103,6 +105,7 @@ Postgres error string to a client.
 | `APPOINTMENT_NOT_IN_ORG` | 409 | |
 | `HOST_NOT_IN_ORG` | 409 | |
 | `PAYMENT_NOT_REFUNDABLE` | 409 | Payment status is not succeeded or partially_refunded |
+| `INCOMPLETE_DESTINATION` | 409 | Destination missing required fields for activation |
 
 ## 5xx — server errors
 
