@@ -1,6 +1,8 @@
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { BillingClient } from './billing-client'
+import { ChoosePlan } from './choose-plan'
+import type { PlanOption, ActiveDestination } from './choose-plan'
 import type {
   SubscriptionRow,
   PlanRow,
@@ -156,8 +158,34 @@ export default async function BillingPage() {
 
   const payments = (paymentsRaw ?? []) as PaymentRow[]
 
+  // Active bank destination (for the choose-plan flow)
+  const { data: destinationRow } = await supabase
+    .from('payment_destinations')
+    .select('id, business_name, bank_name, bank_account_name, bank_account_number, bank_transfer_note')
+    .eq('is_active', true)
+    .maybeSingle()
+
+  const activeDestination = destinationRow as ActiveDestination | null
+
+  // Active plans (for the choose-plan flow)
+  const { data: plansRaw } = await supabase
+    .from('plans')
+    .select('id, code, name, description, price_minor_units, currency, billing_cycle_months')
+    .eq('status', 'active')
+    .order('sort_order', { ascending: true })
+
+  const activePlans = (plansRaw ?? []) as PlanOption[]
+
   return (
-    <BillingClient
+    !subscription ||
+    !['trial', 'active', 'past_due', 'grace_period'].includes(subscription.status) ? (
+      <ChoosePlan
+        organizationId={organizationId}
+        plans={activePlans}
+        activeDestination={activeDestination}
+      />
+    ) : (
+      <BillingClient
       organizationId={organizationId}
       subscription={subscription}
       plan={plan}
@@ -165,6 +193,7 @@ export default async function BillingPage() {
       usage={usage}
       payments={payments}
       countableLabels={Object.fromEntries(COUNTABLE_KEYS.map((k) => [k.code, k.label]))}
-    />
+      />
+    )
   )
 }
