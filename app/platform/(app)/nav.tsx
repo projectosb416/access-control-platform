@@ -4,11 +4,12 @@ import { LogoutButton } from './logout-button'
 /**
  * Platform owner nav.
  *
- * Deliberately minimal for v1 — a header bar, not a sidebar. Two
- * destinations now (Dashboard, Audit) plus sign out. When more
- * platform surfaces ship (per-org drill-down, revenue reports, etc.),
- * this evolves into the same sidebar/bottom-bar pattern the admin
- * surface uses, and gains active-state highlighting.
+ * Deliberately minimal for v1 — a header bar, not a sidebar.
+ * Three destinations now (Dashboard via brand link, Audit,
+ * Destinations) plus sign out. When more platform surfaces ship
+ * (revenue reports, settings, etc.), this evolves into the same
+ * sidebar/bottom-bar pattern the admin surface uses, and gains
+ * active-state highlighting.
  */
 
 export function PlatformNav() {
@@ -30,6 +31,12 @@ export function PlatformNav() {
             className="text-muted-foreground hover:text-foreground text-sm font-medium transition-colors"
           >
             Audit
+          </Link>
+          <Link
+            href="/platform/payment-destinations"
+            className="text-muted-foreground hover:text-foreground text-sm font-medium transition-colors"
+          >
+            Destinations
           </Link>
           <LogoutButton />
         </nav>
