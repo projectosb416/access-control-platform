@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
+import Link from 'next/link'
 import { Button } from '@/components/ui/button'
 import { createClient } from '@/lib/supabase/client'
 import type {
@@ -309,29 +310,31 @@ function OrganizationsPanel({
       ) : (
         <ul className="flex flex-col gap-2">
           {organizations.map((o) => (
-            <li
-              key={o.id}
-              className="bg-background flex flex-col gap-2 rounded-md border px-3 py-2 sm:flex-row sm:items-center sm:justify-between"
-            >
-              <div className="min-w-0">
-                <p className="truncate text-sm font-medium">
-                  {o.display_name}
-                </p>
-                <p className="text-muted-foreground mt-0.5 text-xs">
-                  {ORGANIZATION_TYPE_LABEL[o.organization_type] ??
-                    o.organization_type}{' '}
-                  · Created {formatAbsolute(new Date(o.created_at), new Date(nowIso))}
-                </p>
-              </div>
-              <div className="flex shrink-0 items-center gap-3">
-                <span className="text-muted-foreground text-xs">
-                  {o.plan_name ?? '—'}
-                  {o.period_end
-                    ? ` · until ${formatDate(new Date(o.period_end))}`
-                    : ''}
-                </span>
-                <span className={statusClass(o.status)}>{o.status}</span>
-              </div>
+            <li key={o.id}>
+              <Link
+                href={`/platform/orgs/${o.id}`}
+                className="bg-background hover:bg-muted/40 flex flex-col gap-2 rounded-md border px-3 py-2 transition-colors sm:flex-row sm:items-center sm:justify-between"
+              >
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-medium">
+                    {o.display_name}
+                  </p>
+                  <p className="text-muted-foreground mt-0.5 text-xs">
+                    {ORGANIZATION_TYPE_LABEL[o.organization_type] ??
+                      o.organization_type}{' '}
+                    · Created {formatAbsolute(new Date(o.created_at), new Date(nowIso))}
+                  </p>
+                </div>
+                <div className="flex shrink-0 items-center gap-3">
+                  <span className="text-muted-foreground text-xs">
+                    {o.plan_name ?? '—'}
+                    {o.period_end
+                      ? ` · until ${formatDate(new Date(o.period_end))}`
+                      : ''}
+                  </span>
+                  <span className={statusClass(o.status)}>{o.status}</span>
+                </div>
+              </Link>
             </li>
           ))}
         </ul>
