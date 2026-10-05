@@ -1,0 +1,50 @@
+-- ============================================================================
+-- Migration 0068: drop the pre-0067 overload of record_manual_payment_intent
+-- ============================================================================
+-- Bug found by CI on commit ed4b7ea:
+--
+--   Migration 0067 used `create or replace function` to add
+--   p_destination_id as a fourth parameter to
+--   record_manual_payment_intent. That pattern replaces a function
+--   only when the signature is unchanged. When the signature grows,
+--   `create or replace` creates a second overload and leaves the old
+--   one in the catalog.
+--
+--   Result: staging had two overloads at the same time.
+--     (uuid, uuid, text)                — pre-0067
+--     (uuid, uuid, text, uuid)          — post-0067, default on 4th
+--
+--   Because the new version defaults p_destination_id, a call with
+--   three positional args matches both signatures. Postgres raises
+--   42725 "function is not unique / could not choose a best
+--   candidate". pgTAP test file 17 surfaced the collision on
+--   assertion B (3-arg path). Assertion A (4-arg path) still worked
+--   because it matches only the new signature.
+--
+-- What this migration does:
+--   Drops the old 3-arg signature. Only the 4-arg version remains.
+--   Three-arg positional calls (SQL, PostgREST unnamed, pgTAP) now
+--   resolve cleanly to the 4-arg version via the default. Existing
+--   TypeScript callers were already using 4 named args and were
+--   unaffected.
+--
+-- Verified before shipping (STEP 8a pre-flight):
+--   - Only one TS call site: app/admin/(app)/billing/choose-plan.tsx.
+--     Uses 4 named args. No 3-arg call exists in the repo.
+--   - pg_proc on staging confirmed both overloads present.
+--
+-- Idempotent:
+--   drop function if exists ... — safe to run against staging where
+--   the old signature already exists, and against a fresh database
+--   where it never did.
+--
+-- Lesson (queued for continuity §11):
+--   Extending a function's signature via `create or replace function`
+--   creates an overload, not a replacement. When changing a
+--   signature, either (a) drop the old signature in the same
+--   migration before creating the new one, or (b) ship the drop in a
+--   follow-up migration like this one.
+-- ============================================================================
+
+
+drop function if exists public.record_manual_payment_intent(uuid, uuid, text);
