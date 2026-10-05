@@ -1,6 +1,7 @@
 import { notFound } from 'next/navigation'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
+import { RefundButton } from './refund-button'
 
 /**
  * /platform/orgs/[id] — per-organization drill-down.
@@ -53,6 +54,8 @@ type PaymentRow = {
   provider: string
   provider_reference: string
   created_at: string
+  refunded_amount_minor_units: number | null
+  refunded_at: string | null
 }
 
 type AuditRow = {
@@ -92,7 +95,7 @@ export default async function OrgDetailPage({
 
     supabase
       .from('payment_transactions')
-      .select('id, amount_minor_units, currency, status, purpose, provider, provider_reference, created_at')
+      .select('id, amount_minor_units, currency, status, purpose, provider, provider_reference, created_at, refunded_amount_minor_units, refunded_at')
       .eq('organization_id', id)
       .order('created_at', { ascending: false })
       .limit(MAX_PAYMENTS),
@@ -182,9 +185,19 @@ export default async function OrgDetailPage({
                       {formatAbsolute(new Date(p.created_at), new Date(nowIso))}
                     </p>
                   </div>
-                  <span className={paymentStatusClass(p.status)}>
-                    {p.status.replace(/_/g, ' ')}
-                  </span>
+                  <div className="flex items-center gap-2">
+                    <span className={paymentStatusClass(p.status)}>
+                      {p.status.replace(/_/g, ' ')}
+                    </span>
+                    {(p.status === 'succeeded' || p.status === 'partially_refunded') ? (
+                      <RefundButton
+                        paymentId={p.id}
+                        amountMinorUnits={p.amount_minor_units}
+                        refundedAmountMinorUnits={p.refunded_amount_minor_units}
+                        currency={p.currency}
+                      />
+                    ) : null}
+                  </div>
                 </li>
               ))}
             </ul>

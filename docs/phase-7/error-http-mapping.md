@@ -58,6 +58,8 @@ Postgres error string to a client.
 | `INVALID_ORG_TYPE` | 400 | Not residential / workplace / other |
 | `INVALID_PURPOSE` | 400 | payment purpose not in enum |
 | `LOCKOUT_SECONDS_MUST_BE_POSITIVE` | 400 | `<= 0` |
+| `INVALID_REFUND_AMOUNT` | 400 | Refund amount is null or <= 0 |
+| `REFUND_EXCEEDS_REMAINING` | 400 | Total refunds would exceed the original amount |
 
 ### Not found
 
@@ -100,6 +102,7 @@ Postgres error string to a client.
 | `HOUSEHOLD_MEMBER_NOT_ACTIVE` | 409 | Member is invited or ended, not active |
 | `APPOINTMENT_NOT_IN_ORG` | 409 | |
 | `HOST_NOT_IN_ORG` | 409 | |
+| `PAYMENT_NOT_REFUNDABLE` | 409 | Payment status is not succeeded or partially_refunded |
 
 ## 5xx — server errors
 
