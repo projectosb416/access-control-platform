@@ -43,7 +43,7 @@ export function BillingClient({
   countableLabels,
 }: {
   organizationId: string
-  subscription: SubscriptionRow | null
+  subscription: SubscriptionRow
   plan: PlanRow | null
   entitlements: EntitlementRow[]
   usage: Record<string, UsageCount>
@@ -102,16 +102,7 @@ export function BillingClient({
         </p>
       ) : null}
 
-      {!subscription ? (
-        <section className="bg-muted/40 rounded-lg border p-5">
-          <h2 className="text-base font-medium">No subscription</h2>
-          <p className="text-muted-foreground mt-1 text-sm">
-            Your organization doesn&apos;t have a subscription yet. Contact
-            support to activate your estate.
-          </p>
-        </section>
-      ) : (
-        <div className="flex flex-col gap-6">
+      <div className="flex flex-col gap-6">
           <StatusBanner status={subscription.status} />
 
           {plan ? (
@@ -150,8 +141,7 @@ export function BillingClient({
               </Button>
             </section>
           ) : null}
-        </div>
-      )}
+      </div>
 
       {cancelOpen ? (
         <ConfirmCancel
