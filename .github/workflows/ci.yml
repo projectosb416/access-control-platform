@@ -118,7 +118,9 @@ jobs:
   deploy-main-app:
     name: Deploy main app to Cloudflare
     runs-on: ubuntu-latest
-    needs: verify-worker
+    # deploy-main-app depends on test-db (via verify -> apply-migrations
+    # -> test-db) so the Worker never ships ahead of its schema.
+    needs: [verify-worker, test-db]
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     steps:
       - uses: actions/checkout@v4
