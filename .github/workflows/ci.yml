@@ -9,7 +9,7 @@ on:
 jobs:
   verify:
     name: Verify (lint, typecheck, test, build)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-node@v5
@@ -27,7 +27,7 @@ jobs:
 
   verify-worker:
     name: Verify Worker build (OpenNext)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-node@v5
@@ -43,7 +43,7 @@ jobs:
 
   apply-migrations:
     name: Apply Supabase migrations
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     needs: verify
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     steps:
@@ -66,7 +66,7 @@ jobs:
 
   test-db:
     name: Database layer tests (pgTAP)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     needs: apply-migrations
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     steps:
@@ -90,7 +90,7 @@ jobs:
 
   deploy-pin-hash-test:
     name: Deploy pin-hash-test worker
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     needs: verify
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     steps:
@@ -117,7 +117,7 @@ jobs:
 
   deploy-main-app:
     name: Deploy main app to Cloudflare
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     # deploy-main-app depends on test-db (via verify -> apply-migrations
     # -> test-db) so the Worker never ships ahead of its schema.
     needs: [verify-worker, test-db]
@@ -152,7 +152,7 @@ jobs:
 
   smoke-test-deployed:
     name: Smoke test deployed Worker
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     needs: deploy-main-app
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     steps:

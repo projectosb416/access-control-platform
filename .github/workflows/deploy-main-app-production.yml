@@ -15,7 +15,7 @@ on:
 jobs:
   check-confirmation:
     name: Verify confirmation string
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - name: Check input
         if: ${{ inputs.confirmation != 'deploy-to-production' }}
@@ -27,7 +27,7 @@ jobs:
 
   deploy-production:
     name: Build and deploy production Worker
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     needs: check-confirmation
     steps:
       - uses: actions/checkout@v5
@@ -79,7 +79,7 @@ jobs:
 
   smoke-test-production:
     name: Smoke test production Worker
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     needs: deploy-production
     steps:
       - uses: actions/checkout@v5
