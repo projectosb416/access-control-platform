@@ -31,6 +31,7 @@ export default function AdminSignupPage() {
   const [confirmPassword, setConfirmPassword] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [termsAccepted, setTermsAccepted] = useState(false)
   const [emailSent, setEmailSent] = useState(false)
 
   async function handleSubmit(e: FormEvent<HTMLFormElement>) {
@@ -52,6 +53,10 @@ export default function AdminSignupPage() {
       setError('Passwords do not match.')
       return
     }
+    if (!termsAccepted) {
+      setError('Please accept the Terms of Service to continue.')
+      return
+    }
 
     setSubmitting(true)
     try {
@@ -59,6 +64,11 @@ export default function AdminSignupPage() {
       const { data, error: signUpError } = await supabase.auth.signUp({
         email: trimmedEmail,
         password,
+        options: {
+          data: {
+            terms_accepted: true,
+          },
+        },
       })
 
       if (signUpError) {
@@ -167,6 +177,19 @@ export default function AdminSignupPage() {
             {error}
           </p>
         ) : null}
+
+        <label className="flex items-start gap-2 text-sm">
+          <input
+            type="checkbox"
+            checked={termsAccepted}
+            onChange={(e) => setTermsAccepted(e.target.checked)}
+            disabled={submitting}
+            className="mt-0.5 h-4 w-4 shrink-0"
+          />
+          <span className="text-muted-foreground">
+            I agree to the Terms of Service and Privacy Policy.
+          </span>
+        </label>
 
         <Button
           type="submit"
