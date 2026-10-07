@@ -121,6 +121,15 @@ export default function AdminLoginPage() {
         </Button>
 
         <p className="text-muted-foreground mt-4 text-center text-sm">
+          <Link
+            href="/auth/forgot-password"
+            className="underline underline-offset-4"
+          >
+            Forgot your password?
+          </Link>
+        </p>
+
+        <p className="text-muted-foreground mt-4 text-center text-sm">
           Don&apos;t have an account?{' '}
           <Link
             href="/admin/signup"

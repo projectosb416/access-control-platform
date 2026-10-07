@@ -105,6 +105,15 @@ export default function ResidentLoginPage() {
         </Button>
 
         <p className="text-muted-foreground mt-4 text-center text-xs">
+          <Link
+            href="/auth/forgot-password"
+            className="underline underline-offset-4"
+          >
+            Forgot your password?
+          </Link>
+        </p>
+
+        <p className="text-muted-foreground mt-4 text-center text-xs">
           Got an invite?{' '}
           <Link href="/resident/join" className="underline underline-offset-4">
             Enter your code
