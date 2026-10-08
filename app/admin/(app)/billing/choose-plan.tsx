@@ -71,9 +71,9 @@ export function ChoosePlan({
   const [paystackLoading, setPaystackLoading] = useState(false)
 
   const payDisabled = activeDestination === null
+  const bankTransferAvailable = activeDestination !== null
 
   function openConfirm(plan: PlanOption) {
-    if (payDisabled) return
     setSelectedPlan(plan)
     setPaymentResult(null)
     setError(null)
@@ -203,8 +203,7 @@ export function ChoosePlan({
           <strong className="font-medium">
             Bank transfer currently unavailable.
           </strong>{' '}
-          No destination is configured. Contact support to enable
-          payments.
+          Pay by card to continue.
         </div>
       ) : null}
 
@@ -245,7 +244,6 @@ export function ChoosePlan({
               <Button
                 type="button"
                 size="sm"
-                disabled={payDisabled}
                 onClick={() => openConfirm(p)}
               >
                 Choose
@@ -270,6 +268,7 @@ export function ChoosePlan({
           <div className="bg-background relative w-full max-w-md rounded-lg border p-5 shadow-lg">
             {stage === 'confirm' ? (
               <ConfirmStage
+                bankTransferAvailable={bankTransferAvailable}
                 plan={selectedPlan}
                 submitting={submitting}
                 paystackLoading={paystackLoading}
@@ -305,6 +304,7 @@ function ConfirmStage({
   plan,
   submitting,
   paystackLoading,
+  bankTransferAvailable,
   error,
   onBack,
   onContinue,
@@ -313,6 +313,7 @@ function ConfirmStage({
   plan: PlanOption
   submitting: boolean
   paystackLoading: boolean
+  bankTransferAvailable: boolean
   error: string | null
   onBack: () => void
   onContinue: () => void
@@ -375,14 +376,16 @@ function ConfirmStage({
         >
           Cancel
         </Button>
-        <Button
-          type="button"
-          variant="outline"
-          onClick={onContinue}
-          disabled={submitting || paystackLoading}
-        >
-          {submitting ? 'Preparing…' : 'Get reference'}
-        </Button>
+        {bankTransferAvailable ? (
+          <Button
+            type="button"
+            variant="outline"
+            onClick={onContinue}
+            disabled={submitting || paystackLoading}
+          >
+            {submitting ? 'Preparing…' : 'Get reference'}
+          </Button>
+        ) : null}
         <Button
           type="button"
           onClick={onPayOnline}
