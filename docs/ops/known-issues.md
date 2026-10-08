@@ -19,6 +19,8 @@ and target phase. This file is the tracker — GitHub Issues are not used.
 **Area:** Operations
 **Found:** 2026-09-25 during the Phase 9 Guard ENTRY browser test
 
+**Addressed by:** Admin-lite attention view (`app/admin/(app)/activity/activity-client.tsx`) — calls `mark_session_unresolved()` for stale sessions and `resolve_session()` for unresolved ones. See migration 0014.
+
 **Symptom:** When a visitor enters but never scans out, the access_session
 remains `open`. A second entry attempt by the same person returns
 `UNRESOLVED_VISIT` (correct — the concurrency rule is enforced). But the
@@ -31,15 +33,19 @@ shift without an exit scan, network failures happen mid-visit. Each one
 needs manual SQL to resolve. At scale, that's operational debt accumulating
 daily.
 
-**Current workaround:** Manual SQL run by an operator with Supabase access:
+**Current workaround:** Use the sanctioned RPC:
 
-    update public.access_sessions
-       set status = 'completed',
-           exited_at = now(),
-           gate_exited_id = <gate>,
-           closed_by_event_id = gen_random_uuid()
-     where organization_id = <org>
-       and status = 'open';
+    select public.resolve_session(
+      p_organization_id := '<org>',
+      p_session_id      := '<session>',
+      p_reason          := 'manually resolved — session resumed via sanctioned path',
+      p_notes           := null
+    );
+
+The direct-UPDATE workaround (removed from this doc 2026-10-08) wrote
+`status='completed'`, hiding the session from unresolved-session
+surfaces. The sanctioned `resolve_session()` writes `status='unresolved'`
++ metadata, matching the intended semantics.
 
 **Permanent fix:** Admin-facing "Unresolved sessions" view. The Postgres
 function `resolve_session()` already exists (migration 0014) and enforces
@@ -582,6 +588,46 @@ CI cycle that could have been avoided.
 
 ---
 
+## Issue 18 — notifications_update_self_read policy shape
+
+**Severity:** Medium
+**Area:** RLS / policy
+**Found:** 2026-09 (see continuity §8 for the class precedent)
+**Status:** Open. Detail pending — see below.
+
+**Symptom:** The `notifications_update_self_read` policy uses the same
+row-scoped shape that was already dropped for two other tables:
+
+- `authorizations_update_primary_resident` — dropped in migration 0053
+- `authorizations_insert_primary_resident` — dropped in migration 0055
+
+Row-scoped policies on tenant tables that allow any client-side write
+are a bug: an RLS policy cannot restrict which columns an UPDATE
+changes. A "self read" flag on notifications, if updatable by the
+resident through this policy, could be paired with other column writes
+that the policy does not intend to permit.
+
+**Why it matters:** Same class as the two policies already removed. If
+left in place, the pattern persists and future contributors may treat
+it as precedent.
+
+**Permanent fix:** Drop `notifications_update_self_read` and route the
+write through a SECURITY DEFINER function, matching the shape of the
+0053/0055 replacements.
+
+**Detail pending:** The specific write path (which columns are updated,
+under what conditions, by which client surface) is not yet documented
+in this entry. Full details to be captured in the Phase 10 slice that
+drops the policy, mirroring the 0053/0055 handling.
+
+**Target phase:** Phase 10.
+
+**Impact if not fixed:** Resident-side UPDATE on `notifications`
+remains row-scoped without column restrictions, contrary to the
+established RLS shape lesson (continuity §6).
+
+---
+
 ## Issue 19 — Household members get NOT_AUTHORIZED on read RPCs
 
 **Severity:** Low
@@ -670,4 +716,51 @@ questions from future review.
 
 ---
 
+## Issue 21 — EXIT is strictly server-bound; no offline fallback
+
+**Severity:** Medium
+**Area:** Product / safety / operations
+**Found:** 2026-10-08 during Task Q recon
+
+**Symptom:** EXIT requires a server round-trip at three points:
+
+1. `verifyPinAgainstPhc` — PBKDF2-HMAC-SHA256 against a server-held
+   pepper and the stored PHC hash (route: `app/api/guard/exit/route.ts`).
+2. `evaluate_exit` — RPC; all state validation lives in Postgres.
+3. `logAppEvent` — writes an `access_events` row for every attempt.
+
+If the guard device cannot reach the Worker, none of the three can run.
+The guard device falls back to `SYSTEM_UNAVAILABLE` (same copy as a
+server-side 503). No retry, no queue, no cache.
+
+**Why it matters:** the guard is a human — a gate opens manually if the
+network is down. What fails is the *record*: no `access_events` row,
+no exit timestamp, and the `access_sessions` row stays `open` until
+manually reconciled. A burst of unresolved sessions during an outage
+also masks genuine anomalies in the same signal.
+
+**Current workaround:** none. Guards open gates manually; sessions
+accumulate as `open`; operator reconciles via the admin attention view
+or `resolve_session()`.
+
+**Permanent fix:** not attempted — and not recommended. Any offline
+EXIT that accepts a 6-digit PIN without server verification either
+trusts every entry or rejects every entry; neither is a real
+verification. Same reasoning rules out offline ENTRY (rate limits,
+authorization windows, credential lookup all live server-side). The
+correct posture is:
+
+1. Guard-device copy that distinguishes "network unreachable" from
+   "server error" — currently both render `SYSTEM_UNAVAILABLE`.
+2. A defined operator procedure for reconciling unresolved sessions
+   that grew during an outage — see Issue 1.
+
+**Target phase:** copy + procedure refinement — any upcoming UX pass.
+Offline verification: not planned.
+
+**Impact if not fixed:** during an outage, exits are recorded as
+unresolved sessions rather than as clean exits. The unresolved-session
+queue grows, and manual reconciliation cost scales linearly with
+outage length. Not a security hole — the human guard retains physical
+control — but a real operational cost.
 
