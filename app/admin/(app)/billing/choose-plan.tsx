@@ -68,6 +68,7 @@ export function ChoosePlan({
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [copied, setCopied] = useState<string | null>(null)
+  const [paystackLoading, setPaystackLoading] = useState(false)
 
   const payDisabled = activeDestination === null
 
@@ -86,6 +87,45 @@ export function ChoosePlan({
     setPaymentResult(null)
     setError(null)
     setCopied(null)
+  }
+
+  async function handlePayOnline() {
+    if (!selectedPlan) return
+    setError(null)
+    setPaystackLoading(true)
+    try {
+      const res = await fetch('/api/paystack/initiate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          organization_id: organizationId,
+          plan_id: selectedPlan.id,
+          purpose: 'initial',
+        }),
+      })
+
+      const payload = (await res.json().catch(() => null)) as
+        | { authorization_url?: string; code?: string }
+        | null
+
+      if (!res.ok) {
+        setError(friendlyError(payload?.code ?? 'SYSTEM_UNAVAILABLE'))
+        setPaystackLoading(false)
+        return
+      }
+
+      if (!payload?.authorization_url) {
+        setError('Could not start the payment. Please try again.')
+        setPaystackLoading(false)
+        return
+      }
+
+      // Redirects the browser; the component unmounts on navigation.
+      window.location.href = payload.authorization_url
+    } catch {
+      setError('Could not start the payment. Please try again.')
+      setPaystackLoading(false)
+    }
   }
 
   async function handleGetReference() {
@@ -232,9 +272,11 @@ export function ChoosePlan({
               <ConfirmStage
                 plan={selectedPlan}
                 submitting={submitting}
+                paystackLoading={paystackLoading}
                 error={error}
                 onBack={closeDialog}
                 onContinue={() => void handleGetReference()}
+                onPayOnline={() => void handlePayOnline()}
               />
             ) : null}
 
@@ -262,15 +304,19 @@ export function ChoosePlan({
 function ConfirmStage({
   plan,
   submitting,
+  paystackLoading,
   error,
   onBack,
   onContinue,
+  onPayOnline,
 }: {
   plan: PlanOption
   submitting: boolean
+  paystackLoading: boolean
   error: string | null
   onBack: () => void
   onContinue: () => void
+  onPayOnline: () => void
 }) {
   return (
     <>
@@ -278,8 +324,8 @@ function ConfirmStage({
         Continue with {plan.name}?
       </h3>
       <p className="text-muted-foreground mt-2 text-sm">
-        You&apos;ll receive a payment reference to use as the transfer
-        narration. Send the amount to the bank account shown next.
+        Pay securely by card via Paystack, or get a bank transfer
+        reference.
       </p>
 
       <div className="bg-muted/40 mt-4 flex flex-col gap-1 rounded-md border px-3 py-3 text-sm">
@@ -320,17 +366,29 @@ function ConfirmStage({
         </p>
       ) : null}
 
-      <div className="mt-5 flex justify-end gap-2">
+      <div className="mt-5 flex flex-wrap justify-end gap-2">
         <Button
           type="button"
           variant="outline"
           onClick={onBack}
-          disabled={submitting}
+          disabled={submitting || paystackLoading}
         >
           Cancel
         </Button>
-        <Button type="button" onClick={onContinue} disabled={submitting}>
+        <Button
+          type="button"
+          variant="outline"
+          onClick={onContinue}
+          disabled={submitting || paystackLoading}
+        >
           {submitting ? 'Preparing…' : 'Get reference'}
+        </Button>
+        <Button
+          type="button"
+          onClick={onPayOnline}
+          disabled={submitting || paystackLoading}
+        >
+          {paystackLoading ? 'Redirecting…' : 'Pay online with card'}
         </Button>
       </div>
     </>
@@ -462,5 +520,6 @@ function friendlyError(code: string): string {
   if (code.includes('INVALID_PURPOSE')) return 'Invalid payment purpose.'
   if (code.includes('PLAN_NOT_AVAILABLE')) return 'That plan is no longer available.'
   if (code.includes('DESTINATION_NOT_FOUND')) return 'The destination no longer exists. Contact support.'
+  if (code.includes('PAYSTACK_INIT_FAILED')) return 'Could not reach Paystack. Try again, or pay by bank transfer.'
   return 'Could not start the payment. Please try again.'
 }
