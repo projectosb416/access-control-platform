@@ -56,6 +56,7 @@ type PaymentRow = {
   created_at: string
   refunded_amount_minor_units: number | null
   refunded_at: string | null
+  payment_destination_id: string | null
 }
 
 type AuditRow = {
@@ -65,6 +66,22 @@ type AuditRow = {
   target_id: string | null
   reason: string | null
   recorded_at: string
+}
+
+type TeamMemberRow = {
+  account_id: string
+  full_name: string
+  email: string | null
+  role: string
+  membership_status: string
+  account_status: string
+  joined_at: string | null
+  terms_accepted_at: string | null
+}
+
+type DestinationRow = {
+  id: string
+  business_name: string | null
 }
 
 const MAX_PAYMENTS = 20
@@ -78,7 +95,7 @@ export default async function OrgDetailPage({
   const { id } = await params
   const supabase = await createClient()
 
-  const [orgRes, subRes, payRes, auditRes] = await Promise.all([
+  const [orgRes, subRes, payRes, auditRes, teamRes, destinationsRes] = await Promise.all([
     supabase
       .from('organizations')
       .select('id, name, display_name, organization_type, status, created_at')
@@ -95,7 +112,7 @@ export default async function OrgDetailPage({
 
     supabase
       .from('payment_transactions')
-      .select('id, amount_minor_units, currency, status, purpose, provider, provider_reference, created_at, refunded_amount_minor_units, refunded_at')
+      .select('id, amount_minor_units, currency, status, purpose, provider, provider_reference, created_at, refunded_amount_minor_units, refunded_at, payment_destination_id')
       .eq('organization_id', id)
       .order('created_at', { ascending: false })
       .limit(MAX_PAYMENTS),
@@ -106,6 +123,12 @@ export default async function OrgDetailPage({
       .eq('organization_id', id)
       .order('recorded_at', { ascending: false })
       .limit(MAX_AUDIT),
+
+    supabase.rpc('platform_org_team', { p_organization_id: id }),
+
+    supabase
+      .from('payment_destinations')
+      .select('id, business_name'),
   ])
 
   const org = orgRes.data as OrgRow | null
@@ -116,6 +139,11 @@ export default async function OrgDetailPage({
   const subscription = subRes.data as SubRow | null
   const payments = (payRes.data ?? []) as PaymentRow[]
   const auditEvents = (auditRes.data ?? []) as AuditRow[]
+  const teamMembers = (teamRes.data ?? []) as unknown as TeamMemberRow[]
+  const destinations = (destinationsRes.data ?? []) as DestinationRow[]
+  const destinationNameById = new Map(
+    destinations.map((d) => [d.id, d.business_name ?? '—']),
+  )
 
   // Fetch the plan if there is a subscription.
   let plan: PlanRow | null = null
@@ -164,6 +192,8 @@ export default async function OrgDetailPage({
           plan={plan}
         />
 
+        <TeamPanel members={teamMembers} nowIso={nowIso} />
+
         <Panel title={`Recent payments (last ${MAX_PAYMENTS})`}>
           {payments.length === 0 ? (
             <p className="text-muted-foreground text-sm">
@@ -171,7 +201,11 @@ export default async function OrgDetailPage({
             </p>
           ) : (
             <ul className="flex flex-col gap-2">
-              {payments.map((p) => (
+              {payments.map((p) => {
+                const destName = p.payment_destination_id
+                  ? destinationNameById.get(p.payment_destination_id)
+                  : undefined
+                return (
                 <li
                   key={p.id}
                   className="bg-background flex items-center justify-between gap-3 rounded-md border px-3 py-2"
@@ -184,6 +218,11 @@ export default async function OrgDetailPage({
                       {p.purpose} · {p.provider} · {p.provider_reference} ·{' '}
                       {formatAbsolute(new Date(p.created_at), new Date(nowIso))}
                     </p>
+                    {destName ? (
+                      <p className="text-muted-foreground mt-0.5 text-xs">
+                        via {destName}
+                      </p>
+                    ) : null}
                   </div>
                   <div className="flex items-center gap-2">
                     <span className={paymentStatusClass(p.status)}>
@@ -199,7 +238,7 @@ export default async function OrgDetailPage({
                     ) : null}
                   </div>
                 </li>
-              ))}
+              )})}
             </ul>
           )}
         </Panel>
@@ -247,6 +286,72 @@ export default async function OrgDetailPage({
 // Panels
 // ---------------------------------------------------------------------------
 
+function TeamPanel({
+  members,
+  nowIso,
+}: {
+  members: TeamMemberRow[]
+  nowIso: string
+}) {
+  return (
+    <Panel title="Team">
+      {members.length === 0 ? (
+        <p className="text-muted-foreground text-sm">
+          No team members for this organization.
+        </p>
+      ) : (
+        <ul className="flex flex-col gap-2">
+          {members.map((m) => (
+            <li
+              key={m.account_id}
+              className="bg-background flex flex-col gap-1 rounded-md border px-3 py-2"
+            >
+              <div className="flex items-baseline justify-between gap-2">
+                <span className="truncate text-sm font-medium">
+                  {m.full_name}
+                </span>
+                <div className="flex shrink-0 items-center gap-2">
+                  <span className={statusClass(m.role)}>
+                    {m.role.replace(/_/g, ' ')}
+                  </span>
+                  <span className={statusClass(m.membership_status)}>
+                    {m.membership_status}
+                  </span>
+                </div>
+              </div>
+              {m.email ? (
+                <a
+                  href={`mailto:${m.email}`}
+                  className="text-muted-foreground hover:text-foreground truncate text-xs underline underline-offset-4"
+                >
+                  {m.email}
+                </a>
+              ) : (
+                <span className="text-muted-foreground text-xs italic">
+                  No email on record
+                </span>
+              )}
+              {m.account_status !== m.membership_status ? (
+                <p className="text-muted-foreground text-xs">
+                  Account: {m.account_status}
+                </p>
+              ) : null}
+              <p className="text-muted-foreground text-xs">
+                {m.joined_at
+                  ? `Joined ${formatAbsolute(new Date(m.joined_at), new Date(nowIso))}`
+                  : 'Not yet joined'}
+                {' · '}
+                {m.terms_accepted_at
+                  ? `ToS accepted ${formatAbsolute(new Date(m.terms_accepted_at), new Date(nowIso))}`
+                  : 'No ToS on record'}
+              </p>
+            </li>
+          ))}
+        </ul>
+      )}
+    </Panel>
+  )
+}
 function Panel({
   title,
   children,
