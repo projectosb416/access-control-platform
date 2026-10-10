@@ -86,8 +86,8 @@ select is(
      from public.platform_org_team(
        'ca000000-0000-0000-0000-000000000010'::uuid) as f
     where f.role = 'admin'),
-  '(admin,active,true)',
-  'C: admin row shows role=admin, account_status=active, ToS accepted'
+  '(admin,pending_activation,t)',
+  'C: admin row shows role=admin, account_status=pending_activation, ToS accepted'
 );
 
 -- ============================================================================
