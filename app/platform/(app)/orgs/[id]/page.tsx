@@ -36,6 +36,18 @@ type SubRow = {
   current_period_end: string
 }
 
+type SubscriptionHistoryRow = {
+  id: string
+  plan_id: string
+  status: string
+  current_period_start: string
+  current_period_end: string
+  superseded_at: string | null
+  superseded_by: string | null
+  cancelled_at: string | null
+  created_at: string
+}
+
 type PlanRow = {
   id: string
   code: string
@@ -95,7 +107,7 @@ export default async function OrgDetailPage({
   const { id } = await params
   const supabase = await createClient()
 
-  const [orgRes, subRes, payRes, auditRes, teamRes, destinationsRes] = await Promise.all([
+  const [orgRes, subRes, payRes, auditRes, teamRes, destinationsRes, subHistoryRes, plansRes] = await Promise.all([
     supabase
       .from('organizations')
       .select('id, name, display_name, organization_type, status, created_at')
@@ -129,6 +141,16 @@ export default async function OrgDetailPage({
     supabase
       .from('payment_destinations')
       .select('id, business_name'),
+
+    supabase
+      .from('subscriptions')
+      .select('id, plan_id, status, current_period_start, current_period_end, superseded_at, superseded_by, cancelled_at, created_at')
+      .eq('organization_id', id)
+      .order('current_period_end', { ascending: false }),
+
+    supabase
+      .from('plans')
+      .select('id, name'),
   ])
 
   const org = orgRes.data as OrgRow | null
@@ -138,6 +160,17 @@ export default async function OrgDetailPage({
 
   const subscription = subRes.data as SubRow | null
   const payments = (payRes.data ?? []) as PaymentRow[]
+  const OPERATIONAL_STATUSES = new Set([
+    'trial',
+    'active',
+    'past_due',
+    'grace_period',
+  ])
+  const subscriptionHistory = ((subHistoryRes.data ?? []) as SubscriptionHistoryRow[])
+    .filter((sh) => !OPERATIONAL_STATUSES.has(sh.status))
+  const planNameById = new Map(
+    ((plansRes.data ?? []) as Array<{ id: string; name: string }>).map((p) => [p.id, p.name]),
+  )
   const auditEvents = (auditRes.data ?? []) as AuditRow[]
   const teamMembers = (teamRes.data ?? []) as unknown as TeamMemberRow[]
   const destinations = (destinationsRes.data ?? []) as DestinationRow[]
@@ -191,6 +224,14 @@ export default async function OrgDetailPage({
           subscription={subscription}
           plan={plan}
         />
+
+        {subscriptionHistory.length > 0 ? (
+          <SubscriptionHistoryPanel
+            subs={subscriptionHistory}
+            planNameById={planNameById}
+            nowIso={nowIso}
+          />
+        ) : null}
 
         <TeamPanel members={teamMembers} nowIso={nowIso} />
 
@@ -366,6 +407,52 @@ function Panel({
       </h2>
       {children}
     </section>
+  )
+}
+
+function SubscriptionHistoryPanel({
+  subs,
+  planNameById,
+  nowIso,
+}: {
+  subs: SubscriptionHistoryRow[]
+  planNameById: Map<string, string>
+  nowIso: string
+}) {
+  return (
+    <Panel title="Subscription history">
+      <ul className="flex flex-col gap-2">
+        {subs.map((sh) => (
+          <li
+            key={sh.id}
+            className="bg-background flex flex-col gap-1 rounded-md border px-3 py-2"
+          >
+            <div className="flex items-baseline justify-between gap-2">
+              <span className="truncate text-sm font-medium">
+                {planNameById.get(sh.plan_id) ?? '—'}
+              </span>
+              <span className={statusClass(sh.status)}>
+                {sh.status.replace(/_/g, ' ')}
+              </span>
+            </div>
+            <p className="text-muted-foreground text-xs">
+              {formatDate(new Date(sh.current_period_start))} →{' '}
+              {formatDate(new Date(sh.current_period_end))}
+            </p>
+            {sh.superseded_at ? (
+              <p className="text-muted-foreground text-xs">
+                Superseded {formatAbsolute(new Date(sh.superseded_at), new Date(nowIso))}
+              </p>
+            ) : null}
+            {sh.cancelled_at ? (
+              <p className="text-muted-foreground text-xs">
+                Cancelled {formatAbsolute(new Date(sh.cancelled_at), new Date(nowIso))}
+              </p>
+            ) : null}
+          </li>
+        ))}
+      </ul>
+    </Panel>
   )
 }
 
