@@ -2,6 +2,7 @@ import { notFound } from 'next/navigation'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
 import { RefundButton } from './refund-button'
+import { AuditFilter } from './audit-filter'
 
 /**
  * /platform/orgs/[id] — per-organization drill-down.
@@ -101,11 +102,29 @@ const MAX_AUDIT = 50
 
 export default async function OrgDetailPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ id: string }>
+  searchParams: Promise<{ [key: string]: string | string[] | undefined }>
 }) {
   const { id } = await params
+  const sp = await searchParams
+  const actionFilter = typeof sp.action === 'string' ? sp.action.trim() : ''
   const supabase = await createClient()
+
+  // Audit query — action prefix filter optional.
+  // Chained filter methods return the same builder type; reassignment
+  // via `let` is safe. Same pattern as the standalone audit page.
+  let auditQuery = supabase
+    .from('audit_events')
+    .select('id, action, target_type, target_id, reason, recorded_at')
+    .eq('organization_id', id)
+    .order('recorded_at', { ascending: false })
+    .limit(MAX_AUDIT)
+
+  if (actionFilter) {
+    auditQuery = auditQuery.like('action', `${actionFilter}%`)
+  }
 
   const [orgRes, subRes, payRes, auditRes, teamRes, destinationsRes, subHistoryRes, plansRes] = await Promise.all([
     supabase
@@ -129,12 +148,7 @@ export default async function OrgDetailPage({
       .order('created_at', { ascending: false })
       .limit(MAX_PAYMENTS),
 
-    supabase
-      .from('audit_events')
-      .select('id, action, target_type, target_id, reason, recorded_at')
-      .eq('organization_id', id)
-      .order('recorded_at', { ascending: false })
-      .limit(MAX_AUDIT),
+    auditQuery,
 
     supabase.rpc('platform_org_team', { p_organization_id: id }),
 
@@ -284,10 +298,18 @@ export default async function OrgDetailPage({
           )}
         </Panel>
 
-        <Panel title={`Recent activity (last ${MAX_AUDIT})`}>
+        <Panel
+          title={
+            actionFilter
+              ? `Recent activity — filtered by "${actionFilter}"`
+              : `Recent activity (last ${MAX_AUDIT})`
+          }
+        >
+          <AuditFilter currentActionFilter={actionFilter} />
           {auditEvents.length === 0 ? (
             <p className="text-muted-foreground text-sm">
-              No audit events for this organization.
+              No audit events
+              {actionFilter ? ` matching "${actionFilter}"` : ' for this organization'}.
             </p>
           ) : (
             <ul className="flex flex-col gap-2">
