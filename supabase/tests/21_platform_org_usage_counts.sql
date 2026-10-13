@@ -76,7 +76,7 @@ insert into public.guard_profiles (id, organization_id, person_id, guard_code, s
   ('cb000000-0000-0000-0000-000000000060', 'cb000000-0000-0000-0000-000000000010',
    'cb000000-0000-0000-0000-000000000050', 'GU-TESTCB', 'active');
 
-insert into public.units (id, property_id, unit_number, status) values
+insert into public.units (id, property_id, label, status) values
   ('cb000000-0000-0000-0000-000000000070', 'cb000000-0000-0000-0000-000000000030', 'A-01', 'active'),
   ('cb000000-0000-0000-0000-000000000071', 'cb000000-0000-0000-0000-000000000030', 'A-02', 'active'),
   ('cb000000-0000-0000-0000-000000000072', 'cb000000-0000-0000-0000-000000000031', 'B-01', 'active'),
