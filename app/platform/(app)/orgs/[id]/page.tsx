@@ -49,6 +49,12 @@ type SubscriptionHistoryRow = {
   created_at: string
 }
 
+type UsageRow = {
+  entitlement_code: string
+  used: number
+  max: number
+}
+
 type PlanRow = {
   id: string
   code: string
@@ -126,7 +132,7 @@ export default async function OrgDetailPage({
     auditQuery = auditQuery.like('action', `${actionFilter}%`)
   }
 
-  const [orgRes, subRes, payRes, auditRes, teamRes, destinationsRes, subHistoryRes, plansRes] = await Promise.all([
+  const [orgRes, subRes, payRes, auditRes, teamRes, destinationsRes, subHistoryRes, plansRes, usageRes] = await Promise.all([
     supabase
       .from('organizations')
       .select('id, name, display_name, organization_type, status, created_at')
@@ -165,6 +171,8 @@ export default async function OrgDetailPage({
     supabase
       .from('plans')
       .select('id, name'),
+
+    supabase.rpc('platform_org_usage_counts', { p_organization_id: id }),
   ])
 
   const org = orgRes.data as OrgRow | null
@@ -186,6 +194,7 @@ export default async function OrgDetailPage({
     ((plansRes.data ?? []) as Array<{ id: string; name: string }>).map((p) => [p.id, p.name]),
   )
   const auditEvents = (auditRes.data ?? []) as AuditRow[]
+  const usageRows = (usageRes.data ?? []) as UsageRow[]
   const teamMembers = (teamRes.data ?? []) as unknown as TeamMemberRow[]
   const destinations = (destinationsRes.data ?? []) as DestinationRow[]
   const destinationNameById = new Map(
@@ -238,6 +247,10 @@ export default async function OrgDetailPage({
           subscription={subscription}
           plan={plan}
         />
+
+        {usageRows.length > 0 ? (
+          <UsagePanel usage={usageRows} />
+        ) : null}
 
         {subscriptionHistory.length > 0 ? (
           <SubscriptionHistoryPanel
@@ -429,6 +442,49 @@ function Panel({
       </h2>
       {children}
     </section>
+  )
+}
+
+const USAGE_LABELS: Record<string, string> = {
+  max_properties: 'Properties',
+  max_gates: 'Gates',
+  max_guards: 'Guards',
+  max_units: 'Units',
+}
+
+function UsagePanel({ usage }: { usage: UsageRow[] }) {
+  return (
+    <Panel title="Usage vs plan limits">
+      <ul className="flex flex-col gap-2">
+        {usage.map((u) => {
+          const pct = u.max > 0 ? u.used / u.max : 0
+          const warning = pct >= 0.8
+          const over = u.max > 0 && u.used >= u.max
+          return (
+            <li
+              key={u.entitlement_code}
+              className="bg-background flex items-center justify-between gap-3 rounded-md border px-3 py-2"
+            >
+              <span className="text-sm">
+                {USAGE_LABELS[u.entitlement_code] ?? u.entitlement_code}
+              </span>
+              <span
+                className={
+                  'text-xs font-medium ' +
+                  (over
+                    ? 'text-destructive'
+                    : warning
+                    ? 'text-amber-700 dark:text-amber-400'
+                    : 'text-muted-foreground')
+                }
+              >
+                {u.used} of {u.max}
+              </span>
+            </li>
+          )
+        })}
+      </ul>
+    </Panel>
   )
 }
 
