@@ -45,10 +45,10 @@ values ('cb000000-0000-0000-0000-000000000020', 'test-usage-plan', 'Test Usage P
         'NGN', 100000, 12, 'active');
 
 insert into public.plan_entitlements (plan_id, entitlement_code, entitlement_value) values
-  ('cb000000-0000-0000-0000-000000000020', 'max_properties', 5),
-  ('cb000000-0000-0000-0000-000000000020', 'max_gates',      3),
-  ('cb000000-0000-0000-0000-000000000020', 'max_guards',     4),
-  ('cb000000-0000-0000-0000-000000000020', 'max_units',      100);
+  ('cb000000-0000-0000-0000-000000000020', 'max_properties', '5'::jsonb),
+  ('cb000000-0000-0000-0000-000000000020', 'max_gates',      '3'::jsonb),
+  ('cb000000-0000-0000-0000-000000000020', 'max_guards',     '4'::jsonb),
+  ('cb000000-0000-0000-0000-000000000020', 'max_units',      '100'::jsonb);
 
 -- Operational subscription for org 10
 insert into public.subscriptions (organization_id, plan_id, status, current_period_start, current_period_end)
