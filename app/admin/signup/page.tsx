@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { createClient } from '@/lib/supabase/client'
+import { LEGAL_CONSENT_VERSION } from '@/lib/legal/version'
 
 /**
  * /admin/signup
@@ -67,6 +68,7 @@ export default function AdminSignupPage() {
         options: {
           data: {
             terms_accepted: true,
+            terms_version: LEGAL_CONSENT_VERSION,
           },
         },
       })
@@ -187,7 +189,25 @@ export default function AdminSignupPage() {
             className="mt-0.5 h-4 w-4 shrink-0"
           />
           <span className="text-muted-foreground">
-            I agree to the Terms of Service and Privacy Policy.
+            I agree to the{' '}
+            <Link
+              href="/legal/terms"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="underline underline-offset-4"
+            >
+              Terms of Service
+            </Link>
+            {' '}and{' '}
+            <Link
+              href="/legal/privacy"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="underline underline-offset-4"
+            >
+              Privacy Policy
+            </Link>
+            .
           </span>
         </label>
 
