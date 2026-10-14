@@ -2,7 +2,7 @@
 -- Migration 0076: organization settings
 -- ============================================================================
 -- Purpose:
---   Three changes:
+--   Two changes:
 --     1. Drop the row-scoped organizations_update_admin policy. RLS
 --        policies are row-scoped, not column-scoped — a policy cannot
 --        restrict WHICH columns an UPDATE changes. An org admin could
@@ -12,11 +12,20 @@
 --     2. Add update_organization_settings() — a column-whitelisted
 --        SECURITY DEFINER RPC that becomes the only path for editing
 --        the user-facing subset of org fields.
---     3. Add a CHECK constraint on organization_type. Matches the
---        locked architectural decision (continuity §6: status columns
---        as text with CHECK, not native enums). The wizard has
---        validated this in the app layer since inception; the DB now
---        enforces it too.
+--
+-- Note on the organization_type CHECK constraint:
+--   Migration 0003 (20260919000003_organizations_and_memberships.sql)
+--   declares organization_type with an inline CHECK:
+--     organization_type text not null
+--                       check (organization_type in ('residential', 'workplace', 'other'))
+--   Postgres auto-names inline CHECK constraints as
+--   {table}_{column}_check, which for this case yields
+--   'organizations_organization_type_check'. That constraint has
+--   existed on staging since migration 0003. An earlier draft of this
+--   migration attempted to add it explicitly under that name, which
+--   collided (SQLSTATE 42710) and aborted — the failed attempt was
+--   atomic and left no changes on staging. This version does not
+--   re-add the constraint.
 --
 -- User-editable subset (v1):
 --   name, display_name, organization_type.
@@ -42,20 +51,7 @@ drop policy if exists organizations_update_admin on public.organizations;
 
 
 -- ----------------------------------------------------------------------------
--- 2. Enforce the enum at the DB layer.
--- ----------------------------------------------------------------------------
-
-alter table public.organizations
-  add constraint organizations_organization_type_check
-  check (organization_type in ('residential', 'workplace', 'other'));
-
-comment on constraint organizations_organization_type_check
-  on public.organizations is
-  'Matches the wizard''s org-type options and the locked decision to use text + CHECK rather than native enums (continuity §6).';
-
-
--- ----------------------------------------------------------------------------
--- 3. Column-whitelisted write path.
+-- 2. Column-whitelisted write path.
 -- ----------------------------------------------------------------------------
 
 create or replace function public.update_organization_settings(
