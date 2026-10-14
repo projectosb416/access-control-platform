@@ -6,7 +6,7 @@
 --   B. terms_accepted true, no version -> accepted_at set, version null
 --   C. No metadata -> both null
 --
--- Fixtures use UUID prefix 'cc'. Wrapped in begin/rollback.
+-- Fixtures use UUID prefix 'cd'. Wrapped in begin/rollback.
 -- ============================================================================
 
 begin;
@@ -38,10 +38,10 @@ insert into auth.users (id, email, raw_user_meta_data, created_at, updated_at) v
 -- ============================================================================
 
 select is(
-  (select (terms_accepted_at is not null, terms_version)::text
+  (select ((terms_accepted_at is not null)::int, terms_version)::text
      from public.accounts
     where auth_user_id = 'cd000000-0000-0000-0000-000000000001'),
-  '(true,v1-draft-2026-10-13)',
+  '(1,v1-draft-2026-10-13)',
   'A: terms_accepted_at set and version preserved exactly'
 );
 
@@ -50,10 +50,10 @@ select is(
 -- ============================================================================
 
 select is(
-  (select (terms_accepted_at is not null, terms_version is null)::text
+  (select ((terms_accepted_at is not null)::int, (terms_version is null)::int)::text
      from public.accounts
     where auth_user_id = 'cd000000-0000-0000-0000-000000000002'),
-  '(true,true)',
+  '(1,1)',
   'B: version null when client omitted it, accepted_at still set'
 );
 
@@ -62,10 +62,10 @@ select is(
 -- ============================================================================
 
 select is(
-  (select (terms_accepted_at is null, terms_version is null)::text
+  (select ((terms_accepted_at is null)::int, (terms_version is null)::int)::text
      from public.accounts
     where auth_user_id = 'cd000000-0000-0000-0000-000000000003'),
-  '(true,true)',
+  '(1,1)',
   'C: both null when terms_accepted not provided'
 );
 
