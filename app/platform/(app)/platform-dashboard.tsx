@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
+import { ArrowRight } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import type {
   PaymentDisplayRow,
@@ -333,6 +334,7 @@ function OrganizationsPanel({
                       : ''}
                   </span>
                   <span className={statusClass(o.status)}>{o.status}</span>
+                  <ArrowRight className="text-muted-foreground h-4 w-4" />
                 </div>
               </Link>
             </li>
