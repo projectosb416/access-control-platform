@@ -1,11 +1,12 @@
 'use client'
 
-import { useMemo, useState, type FormEvent } from 'react'
+import { useMemo, useState, type ChangeEvent, type FormEvent } from 'react'
 import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { createClient } from '@/lib/supabase/client'
+import { parseCsv } from '@/lib/admin/csv'
 
 /**
  * Add-units section — single-add, bulk-add with preview, and the preview
@@ -18,10 +19,11 @@ import { createClient } from '@/lib/supabase/client'
 
 const BULK_MAX = 500
 
-type Mode = 'single' | 'bulk'
+type Mode = 'single' | 'bulk' | 'csv'
 
 interface PreviewRow {
   label: string
+  notes?: string
   conflict: boolean
 }
 
@@ -49,6 +51,11 @@ export function AddUnitsSection({
   const [bulkNotes, setBulkNotes] = useState('')
   const [previewOpen, setPreviewOpen] = useState(false)
 
+  // CSV-add
+  const [csvFileName, setCsvFileName] = useState('')
+  const [csvRowCount, setCsvRowCount] = useState(0)
+  const [csvPreview, setCsvPreview] = useState<PreviewRow[]>([])
+
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
@@ -72,8 +79,9 @@ export function AddUnitsSection({
     return rows
   }, [bulkPrefix, bulkStart, bulkEnd, existingLabels])
 
-  const bulkCount = bulkPreview.length
-  const bulkConflicts = bulkPreview.filter((r) => r.conflict).length
+  const previewRows = mode === 'csv' ? csvPreview : bulkPreview
+  const bulkCount = previewRows.length
+  const bulkConflicts = previewRows.filter((r) => r.conflict).length
   const bulkClean = bulkCount - bulkConflicts
 
   function clearMessages() {
@@ -141,12 +149,12 @@ export function AddUnitsSection({
 
   async function confirmBulkInsert() {
     clearMessages()
-    const rows = bulkPreview
+    const rows = previewRows
       .filter((r) => !r.conflict)
       .map((r) => ({
         property_id: propertyId,
         label: r.label,
-        notes: bulkNotes.trim() || null,
+        notes: (r.notes ?? bulkNotes).trim() || null,
         status: 'active',
       }))
 
@@ -179,6 +187,57 @@ export function AddUnitsSection({
     }
   }
 
+  function handleCsvFile(e: ChangeEvent<HTMLInputElement>) {
+    clearMessages()
+    const file = e.target.files?.[0]
+    if (!file) return
+    setCsvFileName(file.name)
+    setCsvRowCount(0)
+    const reader = new FileReader()
+    reader.onload = () => {
+      try {
+        const text = String(reader.result ?? '')
+        const { rows } = parseCsv(text)
+        if (rows.length === 0) {
+          setError('CSV has no data rows.')
+          return
+        }
+        if (rows.length > BULK_MAX) {
+          setError(`CSV has ${rows.length} rows; maximum is ${BULK_MAX}.`)
+          return
+        }
+        const labelKey = (v: string) => v.trim().toLowerCase()
+        const preview: PreviewRow[] = []
+        for (const r of rows) {
+          const label = (r.label ?? '').trim()
+          if (!label) continue
+          preview.push({
+            label,
+            notes: (r.notes ?? '').trim() || undefined,
+            conflict: existingLabels.has(labelKey(label)),
+          })
+        }
+        if (preview.length === 0) {
+          setError('No valid rows found. The label column is required.')
+          return
+        }
+        setCsvRowCount(preview.length)
+        setCsvPreview(preview)
+        setPreviewOpen(true)
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : ''
+        if (msg === 'CSV_EMPTY') setError('The file is empty.')
+        else if (msg === 'CSV_UNBALANCED_QUOTE')
+          setError('A quoted field was not closed. Check the file for stray quotes.')
+        else setError('Could not read the CSV. Check the format and try again.')
+      }
+    }
+    reader.onerror = () => {
+      setError('Could not read the file.')
+    }
+    reader.readAsText(file)
+  }
+
   return (
     <section>
       <h2 className="text-muted-foreground mb-3 text-sm font-medium tracking-wide uppercase">
@@ -189,6 +248,7 @@ export function AddUnitsSection({
         <div className="bg-muted mb-4 flex gap-1 rounded-lg p-1">
           <ModeTab label="Single" value="single" current={mode} onSelect={setMode} />
           <ModeTab label="Bulk" value="bulk" current={mode} onSelect={setMode} />
+          <ModeTab label="CSV" value="csv" current={mode} onSelect={setMode} />
         </div>
 
         {mode === 'single' ? (
@@ -230,7 +290,7 @@ export function AddUnitsSection({
               </Button>
             </div>
           </form>
-        ) : (
+        ) : mode === 'bulk' ? (
           <form onSubmit={openBulkPreview} className="flex flex-col gap-4">
             <div className="grid gap-2">
               <Label htmlFor="bulkPrefix">Label prefix</Label>
@@ -310,6 +370,31 @@ export function AddUnitsSection({
               </Button>
             </div>
           </form>
+        ) : (
+          <div className="flex flex-col gap-4">
+            <div className="grid gap-2">
+              <Label htmlFor="csvFile">CSV file</Label>
+              <input
+                id="csvFile"
+                type="file"
+                accept=".csv,text/csv"
+                disabled={!operational || submitting}
+                onChange={handleCsvFile}
+                className="border-input bg-background h-11 rounded-md border px-3 text-sm file:mr-3 file:rounded file:border-0 file:bg-muted file:px-3 file:py-1 file:text-xs file:font-medium"
+              />
+              <p className="text-muted-foreground text-xs">
+                Header row required. Columns: <code>label</code> (required),{' '}
+                <code>notes</code> (optional). Max {BULK_MAX} rows per
+                file. Existing labels are skipped.
+              </p>
+            </div>
+
+            {csvFileName ? (
+              <div className="text-muted-foreground text-xs">
+                {csvRowCount} row{csvRowCount === 1 ? '' : 's'} loaded from {csvFileName}
+              </div>
+            ) : null}
+          </div>
         )}
 
         {error ? (
@@ -342,7 +427,7 @@ export function AddUnitsSection({
 
             <div className="overflow-auto px-5 py-3">
               <ul className="flex flex-col gap-1">
-                {bulkPreview.map((row, i) => (
+                {previewRows.map((row, i) => (
                   <li
                     key={i}
                     className={`flex items-center justify-between rounded px-2 py-1 text-sm ${
