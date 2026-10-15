@@ -44,6 +44,18 @@ function clearSessionCookie(response: NextResponse): NextResponse {
 }
 
 async function postHandler(request: NextRequest) {
+  const body = (await request.json().catch(() => ({}))) as {
+    handover_note?: string
+  }
+  const handoverNote =
+    typeof body.handover_note === 'string' ? body.handover_note.trim() : ''
+  if (handoverNote.length > 500) {
+    return NextResponse.json(
+      { code: 'HANDOVER_NOTE_TOO_LONG' },
+      { status: 400 },
+    )
+  }
+
   const token = request.cookies.get(COOKIE_NAME)?.value
 
   // No cookie — nothing to end. Clear anyway in case of partial state.
@@ -100,6 +112,7 @@ async function postHandler(request: NextRequest) {
     p_organization_id: organizationId,
     p_session_id: sessionId,
     p_reason: 'guard ended shift',
+    p_handover_note: handoverNote || null,
   })
 
   if (endError) {

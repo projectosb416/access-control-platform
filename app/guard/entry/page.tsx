@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, type ReactNode } from 'react'
 import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
+import { Label } from '@/components/ui/label'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -191,6 +192,29 @@ export default function GuardEntryPage() {
   const [result, setResult] = useState<ApiResult | null>(null)
   const [mode, setMode] = useState<Direction>('entry')
   const [endShiftOpen, setEndShiftOpen] = useState(false)
+  const [handoverNote, setHandoverNote] = useState('')
+  const [handoverBanner, setHandoverBanner] = useState<{
+    note: string
+    endedAt: string | null
+    endedByName: string | null
+  } | null>(null)
+  const [handoverDismissed, setHandoverDismissed] = useState(false)
+
+  useEffect(() => {
+    let cancelled = false
+    fetch('/api/guard-session/handover')
+      .then((r) => r.json())
+      .then((data) => {
+        if (cancelled) return
+        if (data?.handover?.note) setHandoverBanner(data.handover)
+      })
+      .catch(() => {
+        // Best-effort. Never block the guard.
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [])
 
   const submitPin = useCallback(
     async (value: string, direction: Direction) => {
@@ -213,13 +237,19 @@ export default function GuardEntryPage() {
 
   const handleEndShift = useCallback(async () => {
     try {
-      await fetch('/api/guard-session/end', { method: 'POST' })
+      await fetch('/api/guard-session/end', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          handover_note: handoverNote.trim() || null,
+        }),
+      })
     } catch {
       // Best-effort. Never block the guard on a failing call.
     }
     window.sessionStorage.removeItem(SESSION_STORAGE_KEY)
     router.replace('/guard')
-  }, [router])
+  }, [router, handoverNote])
 
   function pressDigit(d: string) {
     if (submitting || result) return
@@ -309,6 +339,35 @@ export default function GuardEntryPage() {
         </button>
       </header>
 
+      {handoverBanner && !handoverDismissed ? (
+        <div className="border-amber-500/30 bg-amber-500/10 mt-3 rounded-md border px-3 py-2 text-sm text-amber-900 dark:text-amber-200">
+          <div className="flex items-start justify-between gap-2">
+            <div className="min-w-0">
+              <p className="text-xs font-medium uppercase tracking-wide">
+                Handover from previous shift
+              </p>
+              <p className="mt-1 break-words">{handoverBanner.note}</p>
+              {handoverBanner.endedByName ? (
+                <p className="mt-1 text-xs opacity-80">
+                  {handoverBanner.endedByName}
+                  {handoverBanner.endedAt
+                    ? ` · ${formatHandoverTime(handoverBanner.endedAt)}`
+                    : ''}
+                </p>
+              ) : null}
+            </div>
+            <button
+              type="button"
+              onClick={() => setHandoverDismissed(true)}
+              aria-label="Dismiss handover note"
+              className="shrink-0 text-xs underline underline-offset-4"
+            >
+              Dismiss
+            </button>
+          </div>
+        </div>
+      ) : null}
+
       <ModeToggle mode={mode} onChange={setMode} disabled={submitting} />
 
       <div className="mt-6">
@@ -332,6 +391,23 @@ export default function GuardEntryPage() {
               You&apos;ll need your shift code and guard ID to log back in.
             </AlertDialogDescription>
           </AlertDialogHeader>
+          <div className="grid gap-2">
+            <Label htmlFor="handover" className="text-xs">
+              Handover note{' '}
+              <span className="text-muted-foreground font-normal">
+                (optional — next guard at this gate will see it)
+              </span>
+            </Label>
+            <textarea
+              id="handover"
+              value={handoverNote}
+              onChange={(e) => setHandoverNote(e.target.value)}
+              maxLength={500}
+              rows={3}
+              placeholder="e.g. Gate 1 keycard reader is flaky — use manual override if needed."
+              className="border-input bg-background resize-none rounded-md border px-3 py-2 text-sm"
+            />
+          </div>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction onClick={handleEndShift}>
@@ -345,6 +421,15 @@ export default function GuardEntryPage() {
 }
 
 // ---------------------------------------------------------------------------
+
+function formatHandoverTime(iso: string): string {
+  const d = new Date(iso)
+  const h24 = d.getHours()
+  const m = d.getMinutes().toString().padStart(2, '0')
+  const period = h24 >= 12 ? 'PM' : 'AM'
+  const h12 = ((h24 + 11) % 12) + 1
+  return `${h12}:${m} ${period}`
+}
 
 function ModeToggle({
   mode,
