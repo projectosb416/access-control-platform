@@ -25,10 +25,50 @@ jobs:
           echo "Received: ${{ inputs.confirmation }}"
           exit 1
 
+  preflight-migrations:
+    name: Verify production schema is current
+    runs-on: ubuntu-24.04
+    needs: check-confirmation
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: supabase/setup-cli@v3.0.1
+        with:
+          version: 2.34.3
+
+      - name: Link production project
+        run: supabase link --project-ref "$PRODUCTION_SUPABASE_PROJECT_REF"
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_DB_PASSWORD: ${{ secrets.PRODUCTION_SUPABASE_DB_PASSWORD }}
+          PRODUCTION_SUPABASE_PROJECT_REF: ${{ secrets.PRODUCTION_SUPABASE_PROJECT_REF }}
+
+      # Fail if any local migration is absent from the remote ledger.
+      # migration list output columns: Local | Remote | Time (UTC).
+      # A row with a local version but empty Remote cell means
+      # "not applied to production". Any such row blocks the deploy.
+      - name: Check for unapplied migrations
+        run: |
+          set -euo pipefail
+          out=$(supabase migration list --linked)
+          echo "$out"
+          missing=$(echo "$out" | awk -F'|' '$1 ~ /[0-9]/ && $2 ~ /^[[:space:]]*$/')
+          if [ -n "$missing" ]; then
+            echo "::error::Production schema is behind local HEAD. Unapplied migrations:"
+            echo "$missing"
+            echo "Fire the production-migrations workflow first."
+            exit 1
+          fi
+          echo "Production schema is current — all local migrations applied."
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_DB_PASSWORD: ${{ secrets.PRODUCTION_SUPABASE_DB_PASSWORD }}
+          PRODUCTION_SUPABASE_PROJECT_REF: ${{ secrets.PRODUCTION_SUPABASE_PROJECT_REF }}
+
   deploy-production:
     name: Build and deploy production Worker
     runs-on: ubuntu-24.04
-    needs: check-confirmation
+    needs: [check-confirmation, preflight-migrations]
     steps:
       - uses: actions/checkout@v5
 
@@ -51,17 +91,13 @@ jobs:
           NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.PRODUCTION_SUPABASE_URL }}
           NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.PRODUCTION_SUPABASE_ANON_KEY }}
 
-      # PREREQUISITES before first run of this workflow:
-      #   1. secrets.PRODUCTION_PIN_PEPPER must exist in GitHub secrets.
-      #      It is NOT in the current 16-secret set. Generate the pepper
-      #      out-of-band (Bitwarden + physical backup), then add it as
-      #      a repo secret. Do not run this workflow until that is done —
-      #      the secret is referenced below and will fail loudly if absent.
-      #   2. Sentry environment tag change must have shipped — the
-      #      Sentry init reads SENTRY_ENVIRONMENT and defaults to
-      #      "staging". This workflow does not set SENTRY_ENVIRONMENT,
-      #      so production errors would be tagged as staging until
-      #      that code change lands. Follow-up commit, tracked separately.
+      # Prerequisites (both satisfied as of 2026-10-16):
+      #   - secrets.PRODUCTION_PIN_PEPPER is set in repo secrets.
+      #   - SENTRY_ENVIRONMENT=production is set in
+      #     wrangler.production.jsonc vars block, so the Sentry init
+      #     does not fall through to its staging default on prod.
+      # The preflight-migrations job (above) blocks deployment until
+      # the production schema is caught up to local HEAD.
       - name: Set production Worker secrets
         run: |
           printf '%s' "${{ secrets.PRODUCTION_SUPABASE_SERVICE_ROLE_KEY }}" | npx wrangler secret put SUPABASE_SERVICE_ROLE_KEY --config wrangler.production.jsonc

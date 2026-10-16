@@ -716,6 +716,61 @@ questions from future review.
 
 ---
 
+
+---
+
+## Issue 22 — Paystack webhook has no application-level rate limit
+
+**Severity:** Medium
+**Area:** Security / Payments
+**Found:** 2026-10-16 during external production-readiness review
+
+**What:** `POST /api/paystack/webhook` verifies the HMAC-SHA512
+signature on the raw body before doing any work (a forged request
+cannot mutate state), and as of commit f294f33 rejects bodies over
+64 KB before reading them. What it does not do is throttle: an
+unauthenticated flood of requests — even ones whose signature will
+fail — still costs the Worker a HMAC computation and a request
+lifecycle per attempt. There is no per-IP, per-source, or global
+bucket protecting the route.
+
+**Why it matters:** the correctness property is intact (no forged
+payment can succeed), so this is a resource-exhaustion concern, not
+a payment-integrity concern. At low volume it is a non-issue. At
+scale, or under deliberate abuse, Worker CPU and concurrent-request
+limits are the pressure point.
+
+**Why not fixed in-repo today:** the correct fix is a Cloudflare
+edge rate-limit rule on `/api/*`, with a tighter bucket for
+`/api/paystack/webhook`. Cloudflare edge rate limiting requires a
+custom zone — the Worker currently runs on a `workers.dev`
+subdomain, which does not support zone-scoped edge products. This
+is the same blocker tracked in continuity §9 for all edge config
+(WAF managed rules, Bot Fight Mode, zone-level rate limiting).
+
+An application-level throttle inside the Worker was considered and
+rejected: an in-memory bucket resets on every isolate spin-up and
+gives no real protection, and a DB-backed bucket adds a round-trip
+to every webhook (including legitimate Paystack retries), which is
+worse than the honest gap.
+
+**Current workaround:** none needed at current volume. HMAC
+verification rejects forged requests before they can mutate state.
+
+**Permanent fix:** when the production domain is registered and a
+zone exists, add a Cloudflare rate-limit rule scoped to `/api/*`
+(and a tighter `/api/paystack/webhook` rule). Tracked with the
+deferred Cloudflare edge config slice. Paystack retries on non-2xx
+responses, so the bucket must be wide enough not to reject
+legitimate bursts — a bounded rule, not an aggressive one.
+
+**Target phase:** ship-time, with the domain. Same bucket as the
+rest of the Cloudflare edge config.
+
+**Impact if not fixed:** Worker CPU under abuse; no payment-integrity
+risk. Acceptable to launch without; must be on the ship-time
+checklist.
+
 ## Issue 21 — EXIT is strictly server-bound; no offline fallback
 
 **Severity:** Medium
