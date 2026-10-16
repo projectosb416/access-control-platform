@@ -8,7 +8,7 @@
 --   D. Payload currency != intent currency -> PAYMENT_CURRENCY_MISMATCH
 --   E. Matching payload succeeds and returns a subscription id
 --
--- Fixtures use UUID prefix 'cg'. Wrapped in begin/rollback.
+-- Fixtures use UUID prefix 'd0250000'. Wrapped in begin/rollback.
 --
 -- Note on fixture reuse: A, B, C, D all raise before the UPDATE — the
 -- intent row stays 'initiated' after each. E runs against the same row
@@ -26,18 +26,18 @@ select plan(5);
 -- ============================================================================
 
 insert into auth.users (id, email, created_at, updated_at) values
-  ('d0000000-0000-0000-0000-000000000001', 'test-pskx-admin@test.com', now(), now());
+  ('d0250000-0000-0000-0000-000000000001', 'test-pskx-admin@test.com', now(), now());
 
 insert into public.organizations (id, name, display_name, organization_type, status)
-values ('d0000000-0000-0000-0000-000000000010', 'test-pskx-org', 'Test Paystack Cross',
+values ('d0250000-0000-0000-0000-000000000010', 'test-pskx-org', 'Test Paystack Cross',
         'residential', 'provisioning');
 
 insert into public.organization_memberships (organization_id, account_id, role, status, joined_at)
-select 'd0000000-0000-0000-0000-000000000010', a.id, 'admin', 'active', now()
-from public.accounts a where a.auth_user_id = 'd0000000-0000-0000-0000-000000000001';
+select 'd0250000-0000-0000-0000-000000000010', a.id, 'admin', 'active', now()
+from public.accounts a where a.auth_user_id = 'd0250000-0000-0000-0000-000000000001';
 
 insert into public.plans (id, code, name, currency, price_minor_units, billing_cycle_months, status)
-values ('d0000000-0000-0000-0000-000000000020', 'test-pskx-plan', 'Test Paystack Cross Plan',
+values ('d0250000-0000-0000-0000-000000000020', 'test-pskx-plan', 'Test Paystack Cross Plan',
         'NGN', 100000, 12, 'active');
 
 -- ============================================================================
@@ -45,7 +45,7 @@ values ('d0000000-0000-0000-0000-000000000020', 'test-pskx-plan', 'Test Paystack
 -- ============================================================================
 
 select set_config('request.jwt.claims',
-  '{"sub":"d0000000-0000-0000-0000-000000000001"}', true);
+  '{"sub":"d0250000-0000-0000-0000-000000000001"}', true);
 
 -- ============================================================================
 -- Intent — one row, tested four times (all four error paths abort before
@@ -54,8 +54,8 @@ select set_config('request.jwt.claims',
 
 select set_config('test.pskx_ref',
   (select reference from public.record_paystack_payment_intent(
-    'd0000000-0000-0000-0000-000000000010'::uuid,
-    'd0000000-0000-0000-0000-000000000020'::uuid,
+    'd0250000-0000-0000-0000-000000000010'::uuid,
+    'd0250000-0000-0000-0000-000000000020'::uuid,
     'initial'::text
   )),
   true
