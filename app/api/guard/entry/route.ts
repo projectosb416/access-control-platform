@@ -2,6 +2,10 @@ import { NextResponse, type NextRequest } from 'next/server'
 import { createServiceClient } from '@/lib/supabase/service'
 import { computeLookupKey, verifyPinAgainstPhc } from '@/lib/pin/pin'
 import { withSentryRoute } from '@/lib/sentry/route-wrapper'
+import {
+  checkRateLimit,
+  rateLimitUnavailableResponse,
+} from '@/lib/guard/rate-limit'
 
 /**
  * POST /api/guard/entry
@@ -129,27 +133,25 @@ async function postHandler(request: NextRequest) {
   // -------------------------------------------------------------------------
   // 4. Rate limits — gate, then guard (both known from session context)
   // -------------------------------------------------------------------------
-  const { data: gateLimit } = await supabase.rpc('rate_limit_attempt_for_org', {
-    p_organization_id: organizationId,
-    p_scope_type: 'gate',
-    p_scope_id: gateId,
-    p_bucket_seconds: 10,
-  })
-
-  if (gateLimit && !gateLimit[0].allowed) {
+  const gateVerdict = await checkRateLimit(
+    supabase, organizationId, 'gate', gateId,
+  )
+  if (gateVerdict.kind === 'unavailable') {
+    return rateLimitUnavailableResponse()
+  }
+  if (gateVerdict.kind === 'limited') {
     return handleRateLimited(
       supabase, organizationId, gateId, guardProfileId, shiftSessionId, idemKey,
     )
   }
 
-  const { data: guardLimit } = await supabase.rpc('rate_limit_attempt_for_org', {
-    p_organization_id: organizationId,
-    p_scope_type: 'guard',
-    p_scope_id: guardProfileId,
-    p_bucket_seconds: 10,
-  })
-
-  if (guardLimit && !guardLimit[0].allowed) {
+  const guardVerdict = await checkRateLimit(
+    supabase, organizationId, 'guard', guardProfileId,
+  )
+  if (guardVerdict.kind === 'unavailable') {
+    return rateLimitUnavailableResponse()
+  }
+  if (guardVerdict.kind === 'limited') {
     return handleRateLimited(
       supabase, organizationId, gateId, guardProfileId, shiftSessionId, idemKey,
     )
@@ -209,14 +211,13 @@ async function postHandler(request: NextRequest) {
   // -------------------------------------------------------------------------
   // 6. Credential-scope rate limit (only now that we have the credential id)
   // -------------------------------------------------------------------------
-  const { data: credLimit } = await supabase.rpc('rate_limit_attempt_for_org', {
-    p_organization_id: organizationId,
-    p_scope_type: 'credential',
-    p_scope_id: credential.id,
-    p_bucket_seconds: 10,
-  })
-
-  if (credLimit && !credLimit[0].allowed) {
+  const credVerdict = await checkRateLimit(
+    supabase, organizationId, 'credential', credential.id,
+  )
+  if (credVerdict.kind === 'unavailable') {
+    return rateLimitUnavailableResponse()
+  }
+  if (credVerdict.kind === 'limited') {
     return handleRateLimited(
       supabase, organizationId, gateId, guardProfileId, shiftSessionId, idemKey,
     )

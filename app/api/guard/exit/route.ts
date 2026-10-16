@@ -2,6 +2,10 @@ import { NextResponse, type NextRequest } from 'next/server'
 import { createServiceClient } from '@/lib/supabase/service'
 import { computeLookupKey, verifyPinAgainstPhc } from '@/lib/pin/pin'
 import { withSentryRoute } from '@/lib/sentry/route-wrapper'
+import {
+  checkRateLimit,
+  rateLimitUnavailableResponse,
+} from '@/lib/guard/rate-limit'
 
 /**
  * POST /api/guard/exit
@@ -101,14 +105,13 @@ async function postHandler(request: NextRequest) {
   // 4. Rate limits — gate and guard only. Credential scope is deliberately
   //    skipped so a credential lockout cannot trap a visitor inside.
   // ---------------------------------------------------------------------------
-  const { data: gateLimit } = await supabase.rpc('rate_limit_attempt_for_org', {
-    p_organization_id: organizationId,
-    p_scope_type: 'gate',
-    p_scope_id: gateId,
-    p_bucket_seconds: 10,
-  })
-
-  if (gateLimit && !gateLimit[0].allowed) {
+  const gateVerdict = await checkRateLimit(
+    supabase, organizationId, 'gate', gateId,
+  )
+  if (gateVerdict.kind === 'unavailable') {
+    return rateLimitUnavailableResponse()
+  }
+  if (gateVerdict.kind === 'limited') {
     return handleRateLimited(
       supabase,
       organizationId,
@@ -119,17 +122,13 @@ async function postHandler(request: NextRequest) {
     )
   }
 
-  const { data: guardLimit } = await supabase.rpc(
-    'rate_limit_attempt_for_org',
-    {
-      p_organization_id: organizationId,
-      p_scope_type: 'guard',
-      p_scope_id: guardProfileId,
-      p_bucket_seconds: 10,
-    },
+  const guardVerdict = await checkRateLimit(
+    supabase, organizationId, 'guard', guardProfileId,
   )
-
-  if (guardLimit && !guardLimit[0].allowed) {
+  if (guardVerdict.kind === 'unavailable') {
+    return rateLimitUnavailableResponse()
+  }
+  if (guardVerdict.kind === 'limited') {
     return handleRateLimited(
       supabase,
       organizationId,
