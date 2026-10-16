@@ -75,7 +75,14 @@ select set_config('test.psk_sub',
   (select confirm_paystack_payment(
     current_setting('test.psk_ref'),
     'succeeded',
-    '{"test":true}'::jsonb
+    -- Payload mirroring the intent row's own amount/currency.
+    -- Migration 0078 requires both fields present and matching.
+    (select jsonb_build_object(
+       'amount', pt.amount_minor_units,
+       'currency', pt.currency
+     )
+       from public.payment_transactions pt
+      where pt.provider_reference = current_setting('test.psk_ref'))
   )::text),
   true
 );
