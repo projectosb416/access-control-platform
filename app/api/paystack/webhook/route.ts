@@ -34,6 +34,7 @@ import { withSentryRoute } from '@/lib/sentry/route-wrapper'
  *   500 — PAYSTACK_SECRET_KEY absent (fail loud, same posture as
  *         initiate endpoint)
  *   502 — Paystack body malformed (well-signed but not parseable)
+ *   413 — request body exceeds MAX_WEBHOOK_BYTES
  *
  * Signature: x-paystack-signature header, hex-encoded HMAC-SHA512 of
  * the raw body. Timing-safe comparison.
@@ -49,6 +50,14 @@ import { withSentryRoute } from '@/lib/sentry/route-wrapper'
 export const runtime = 'nodejs'
 
 const SIGNATURE_HEADER = 'x-paystack-signature'
+
+// Paystack charge.success/failed payloads are a few KB. 64 KB is
+// generous headroom with no realistic valid payload near it. The
+// route rejects above this in two places — a fast pre-read check on
+// the declared Content-Length, and an authoritative post-read check
+// on the actual byte count (covers chunked bodies that omit
+// Content-Length). See the JSDoc return codes for the error shape.
+const MAX_WEBHOOK_BYTES = 64 * 1024
 
 async function hmacSha512Hex(secret: string, body: string): Promise<string> {
   const encoder = new TextEncoder()
@@ -85,6 +94,19 @@ interface PaystackEvent {
 
 async function postHandler(request: NextRequest) {
   // -------------------------------------------------------------------------
+  // 0. Body size — reject before reading if Content-Length declares an
+  //    over-limit payload. Chunked requests omit this header; the
+  //    post-read check below is authoritative for those.
+  // -------------------------------------------------------------------------
+  const declaredLength = request.headers.get('content-length')
+  if (declaredLength) {
+    const n = parseInt(declaredLength, 10)
+    if (Number.isFinite(n) && n > MAX_WEBHOOK_BYTES) {
+      return NextResponse.json({ code: 'PAYLOAD_TOO_LARGE' }, { status: 413 })
+    }
+  }
+
+  // -------------------------------------------------------------------------
   // 1. Read raw body before any parsing. HMAC is over the raw bytes.
   // -------------------------------------------------------------------------
   let rawBody: string
@@ -92,6 +114,13 @@ async function postHandler(request: NextRequest) {
     rawBody = await request.text()
   } catch {
     return NextResponse.json({ code: 'INVALID_BODY' }, { status: 400 })
+  }
+
+  // Authoritative size check — covers chunked bodies with no
+  // Content-Length. Runs before HMAC so oversized bodies never reach
+  // the signature comparison path.
+  if (rawBody.length > MAX_WEBHOOK_BYTES) {
+    return NextResponse.json({ code: 'PAYLOAD_TOO_LARGE' }, { status: 413 })
   }
 
   // -------------------------------------------------------------------------
